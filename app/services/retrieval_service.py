@@ -9,7 +9,7 @@ async def retrieve_documents(query: str):
 
     with DDGS() as ddgs:
 
-        results = ddgs.text(query, max_results=10)
+        results = ddgs.text(query, max_results=5)
 
         for result in results:
 
