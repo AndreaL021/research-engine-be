@@ -6,6 +6,8 @@ from app.schemas.research_schema import DocumentSchema
 from sqlalchemy.orm import Session
 from app.database.database import SessionLocal
 from app.models.document_model import DocumentModel
+from app.models.query_model import QueryModel
+from app.models.query_document_model import QueryDocumentModel
 
 
 async def retrieve_documents(query: str):
@@ -15,23 +17,55 @@ async def retrieve_documents(query: str):
     # create database session
     db: Session = SessionLocal()
 
-    # check if documents already exist in database
-    cached_documents = db.query(DocumentModel).filter(
-        DocumentModel.query == query
-    ).all()
-    
-    # return cached documents if available
-    if cached_documents:
-        return [
-            DocumentSchema(
-                title=document.title,
-                url=document.url,
-                content=document.content,
-            )
-            for document in cached_documents
-        ]
 
     try:
+        # check if query already exists
+        existing_query = db.query(QueryModel).filter(
+            QueryModel.query == query
+        ).first()
+        if existing_query:
+
+            # retrieve existing query-document relations
+            query_documents = db.query(QueryDocumentModel).filter(
+                QueryDocumentModel.id_query == existing_query.id
+            ).all()
+
+            if query_documents:
+            
+                # load cached documents from database
+                cached_documents: list[DocumentSchema] = []
+
+                for relation in query_documents:
+                
+                    document = db.query(DocumentModel).filter(
+                        DocumentModel.id == relation.id_document
+                    ).first()
+
+                    if not document:
+                        continue
+                    
+                    cached_documents.append(
+                        DocumentSchema(
+                            title=document.title,
+                            url=document.url,
+                            content=document.content,
+                        )
+                    )
+
+                # return cached response if available
+                if cached_documents:
+                    return cached_documents
+            query_model = existing_query
+        else:
+            # create new query entry
+            query_model = QueryModel(
+                query=query
+            )
+            db.add(query_model)
+
+            # generate query id without commit
+            db.flush()
+
         # web retrieval through DDGS
         with DDGS() as ddgs:
 
@@ -62,24 +96,65 @@ async def retrieve_documents(query: str):
                     )
                 )
 
+
+                # check if document already exists
+                existing_document = db.query(DocumentModel).filter(
+                    DocumentModel.url == url
+                ).first()
+
+                # create relation only if document already exists
+                if existing_document:
+                    query_document_model = QueryDocumentModel(
+                        id_query=query_model.id,
+                        id_document=existing_document.id, 
+                    )
+                    # avoid duplicate query-document relation
+                    existing_relation = db.query(QueryDocumentModel).filter(
+                        QueryDocumentModel.id_query == query_model.id,
+                        QueryDocumentModel.id_document == existing_document.id,
+                    ).first()
+                    if existing_relation:
+                        continue
+                    db.add(query_document_model)
+                    continue
+
                 # persist document into PostgreSQL
                 document_model = DocumentModel(
-                    query=query,
                     title=result.get("title"),
                     url=url,
                     content=content,
                 )
 
                 db.add(document_model)
+                # generate document id without commit
+                db.flush()
+
+                query_document_model = QueryDocumentModel(
+                    id_query=query_model.id,
+                    id_document=document_model.id,
+                )
                 
+                # avoid duplicate query-document relation
+                existing_relation = db.query(QueryDocumentModel).filter(
+                    QueryDocumentModel.id_query == query_model.id,
+                    QueryDocumentModel.id_document == document_model.id,
+                ).first()
+                if existing_relation:
+                    continue
+
+                db.add(query_document_model)
+
             # commit transaction
             db.commit()
     except Exception as error:
+
         # rollback failed transaction
         db.rollback()
+
         print(error)
 
     finally:
+        
         # always close database session
         db.close()
 

@@ -7,6 +7,8 @@ from app.api.research import router as research_router
 # database
 from app.database.database import engine, Base
 from app.models.document_model import DocumentModel
+from app.models.query_document_model import QueryDocumentModel
+from app.models.query_model import QueryModel
 
 
 app = FastAPI()

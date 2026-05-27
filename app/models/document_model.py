@@ -1,4 +1,6 @@
-from sqlalchemy import Column, Integer, String, Text
+from sqlalchemy import Column, Integer, String, Text, DateTime
+
+from datetime import datetime
 
 from app.database.database import Base
 
@@ -9,10 +11,10 @@ class DocumentModel(Base):
 
     id = Column(Integer, primary_key=True, index=True)
 
-    query = Column(String, nullable=False)
-
     title = Column(String, nullable=False)
 
     url = Column(String, nullable=False)
 
     content = Column(Text, nullable=False)
+    
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
