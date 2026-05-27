@@ -11,6 +11,6 @@ class QueryModel(Base):
 
     id = Column(Integer, primary_key=True, index=True)
 
-    query = Column(String, nullable=False)
+    query = Column(String, unique=True, nullable=False, index=True)
     
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)

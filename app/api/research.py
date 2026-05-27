@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.services.retrieval_service import retrieve_documents
+from app.services.orchestration_service import retrieve_documents
 
 from app.schemas.research_schema import (
     ResearchRequestSchema,

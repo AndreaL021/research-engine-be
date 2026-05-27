@@ -13,7 +13,7 @@ class DocumentModel(Base):
 
     title = Column(String, nullable=False)
 
-    url = Column(String, nullable=False)
+    url = Column(String, unique=True, nullable=False, index=True)
 
     content = Column(Text, nullable=False)
     
