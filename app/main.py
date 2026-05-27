@@ -4,7 +4,14 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.research import router as research_router
 
+# database
+from app.database.database import engine, Base
+from app.models.document_model import DocumentModel
+
+
 app = FastAPI()
+
+Base.metadata.create_all(bind=engine)
 
 app.add_middleware(
     CORSMiddleware,
