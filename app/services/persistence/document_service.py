@@ -19,6 +19,8 @@ def create_document(
     title: str,
     url: str,
     content: str,
+    content_length:int,
+    domain:str,
 ):
 
     # create new document model
@@ -26,6 +28,8 @@ def create_document(
         title=title,
         url=url,
         content=content,
+        content_length=content_length,
+        domain=domain,
     )
 
     # persist document into database

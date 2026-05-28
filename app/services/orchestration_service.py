@@ -8,6 +8,11 @@ from app.services.persistence.relation_service import (get_relation, create_rela
 from app.services.retrieval.retrieval_service import retrieve_web_documents
 from app.services.knowledge.knowledge_service import get_cached_documents_by_query
 
+from urllib.parse import urlparse
+
+from app.config.config import (MAX_CACHED_DOCUMENTS)
+
+
 async def retrieve_documents(query: str):
 
     # create database session
@@ -20,10 +25,8 @@ async def retrieve_documents(query: str):
             query = query,
         )
         
-        if len(cached_documents) >= 10:
+        if len(cached_documents) >= MAX_CACHED_DOCUMENTS:
             return cached_documents
-
-        retrieval_limit = 5
 
         # retrieve existing query or create a new one
         existing_query = get_query_by_text(
@@ -44,8 +47,7 @@ async def retrieve_documents(query: str):
 
         # retrieve fresh documents from external sources
         documents = await retrieve_web_documents(
-            query = query,
-            max_results = retrieval_limit,
+            query = query
         )
 
         for document in documents:
@@ -73,12 +75,18 @@ async def retrieve_documents(query: str):
                     )
                 continue
 
+            content_length = len(document.content.split())
+
+            domain = urlparse(document.url).netloc
+
             # persist document into PostgreSQL
             document_model = create_document(
-                db=db,
+                db = db,
                 title = document.title,
                 url = document.url,
                 content = document.content,
+                content_length = content_length,
+                domain = domain
             )
 
             existing_relation = get_relation(
