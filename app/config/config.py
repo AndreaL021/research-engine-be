@@ -24,3 +24,7 @@ TRUSTED_DOMAINS = {
     "github.com",
     "openai.com",
 }
+
+CHUNK_SIZE = 200
+
+CHUNK_OVERLAP = 50

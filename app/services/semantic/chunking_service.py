@@ -1,7 +1,13 @@
+from app.config.config import (
+    CHUNK_SIZE,
+    CHUNK_OVERLAP,
+)
+
+
 def chunk_content(
     content: str,
-    chunk_size: int = 200,
-    overlap: int = 50,
+    chunk_size: int = CHUNK_SIZE,
+    overlap: int = CHUNK_OVERLAP,
 ) -> list[str]:
     words = content.split()
 
