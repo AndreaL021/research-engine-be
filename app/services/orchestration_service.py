@@ -7,6 +7,7 @@ from app.services.persistence.document_service import ( get_document_by_url, cre
 from app.services.persistence.relation_service import (get_relation, create_relation)
 from app.services.retrieval.retrieval_service import retrieve_web_documents
 from app.services.knowledge.knowledge_service import get_cached_documents_by_query
+from app.services.semantic.chunking_service import chunk_content
 
 from urllib.parse import urlparse
 
@@ -18,7 +19,7 @@ async def retrieve_documents(query: str):
     # create database session
     db: Session = SessionLocal()
     documents = []
-    
+
     try:
         # return cached knowledge if query was already processed
         cached_documents = get_cached_documents_by_query(
@@ -48,7 +49,8 @@ async def retrieve_documents(query: str):
 
         # retrieve fresh documents from external sources
         documents = await retrieve_web_documents(
-            query = query
+            query = query,
+            cached_length = len(cached_documents)
         )
 
         for document in documents:
@@ -89,6 +91,9 @@ async def retrieve_documents(query: str):
                 content_length = content_length,
                 domain = domain
             )
+
+            chunks = chunk_content(document.content)
+            print(len(chunks))
 
             existing_relation = get_relation(
                 db = db,
@@ -132,5 +137,8 @@ async def retrieve_documents(query: str):
     ]
     
     all_documents = cached_documents + new_documents
+    # for document in all_documents:
+    #     chunks = chunk_content(document.content)
+    #     print(len(chunks))
 
     return all_documents
