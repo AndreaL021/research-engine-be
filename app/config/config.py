@@ -1,3 +1,13 @@
+import os
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+EXA_API_KEY = os.getenv("EXA_API_KEY")
+
 RETRIEVAL_PROVIDER = "ddgs"
 
 MAX_RESULTS = 5

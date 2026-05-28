@@ -4,5 +4,5 @@ async def retrieve_web_documents(
 ):
 
     raise NotImplementedError(
-        "SerpAPI provider not implemented yet"
+        "Tavily provider not implemented yet"
     )

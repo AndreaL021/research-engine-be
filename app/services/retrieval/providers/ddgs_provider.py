@@ -4,11 +4,14 @@ from app.schemas.research_schema import DocumentSchema
 from urllib.parse import urlparse
 
 from app.config.config import (
-    BLOCKED_DOMAINS, 
-    MAX_RESULTS, 
     MIN_CONTENT_WORDS, 
     TRUSTED_DOMAINS,
-    MAX_CACHED_DOCUMENTS
+)
+
+from app.services.retrieval.retrieval_utils import (
+    clean_content,
+    get_results_to_fetch,
+    is_blocked_domain,
 )
 
 
@@ -21,13 +24,8 @@ async def retrieve_web_documents(
     # perform web retrieval through DDGS
     with DDGS() as ddgs:
 
-        remaining_results = max(
-            0,
-            MAX_CACHED_DOCUMENTS - cached_length
-        )
-        results_to_fetch = min(
-            MAX_RESULTS,
-            remaining_results
+        results_to_fetch = get_results_to_fetch(
+            cached_length
         )
         
         results = ddgs.text(
@@ -51,10 +49,7 @@ async def retrieve_web_documents(
             
             domain = urlparse(url).netloc.lower()
 
-            if any(
-                domain.endswith(blocked_domain)
-                for blocked_domain in BLOCKED_DOMAINS
-            ):
+            if is_blocked_domain:
                 continue
 
             # download and extract webpage content
@@ -70,7 +65,7 @@ async def retrieve_web_documents(
             if not content:
                 continue
             
-            content = content.strip()
+            content = clean_content(content)
 
             # skip very short content
             if len(content.split()) < MIN_CONTENT_WORDS:
