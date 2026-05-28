@@ -17,7 +17,8 @@ async def retrieve_documents(query: str):
 
     # create database session
     db: Session = SessionLocal()
-
+    documents = []
+    
     try:
         # return cached knowledge if query was already processed
         cached_documents = get_cached_documents_by_query(
@@ -111,6 +112,8 @@ async def retrieve_documents(query: str):
         db.rollback()
 
         print(error)
+
+        return []
 
     finally:
 
