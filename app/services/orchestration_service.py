@@ -13,8 +13,10 @@ from urllib.parse import urlparse
 
 from app.config.config import (MAX_CACHED_DOCUMENTS)
 
+from fastapi import HTTPException
 
-async def retrieve_documents(query: str):
+
+async def retrieve_documents(query: str, provider:str):
 
     # create database session
     db: Session = SessionLocal()
@@ -50,7 +52,8 @@ async def retrieve_documents(query: str):
         # retrieve fresh documents from external sources
         documents = await retrieve_web_documents(
             query = query,
-            cached_length = len(cached_documents)
+            cached_length = len(cached_documents),
+            provider = provider
         )
 
         for document in documents:
@@ -115,11 +118,11 @@ async def retrieve_documents(query: str):
 
         # rollback failed transaction
         db.rollback()
-
-        print(error)
-
-        return []
-
+        raise HTTPException(
+            status_code=500,
+            detail=str(error)
+        )
+    
     finally:
 
         # always close database session

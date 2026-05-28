@@ -10,7 +10,9 @@ class DocumentSchema(BaseModel):
 class ResearchResponseSchema(BaseModel):
     query: str
     documents: list[DocumentSchema]
+    provider: str
     
 # request
 class ResearchRequestSchema(BaseModel):
     query: str
+    provider: str = "ddgs"

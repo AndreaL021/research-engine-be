@@ -14,9 +14,10 @@ router = APIRouter()
 
 async def research(payload: ResearchRequestSchema):
 
-    documents = await retrieve_documents(payload.query)
+    documents = await retrieve_documents(payload.query, payload.provider)
 
     return {
         "query": payload.query,
+        "provider": payload.provider,
         "documents": documents,
     }
