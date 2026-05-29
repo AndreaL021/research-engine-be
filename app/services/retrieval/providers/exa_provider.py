@@ -2,7 +2,7 @@ import httpx
 
 from app.config.config import (EXA_API_KEY, MAX_CACHED_DOCUMENTS)
 
-from app.schemas.research_schema import DocumentSchema
+from app.schemas.research_schema import RetrievedDocumentSchema
 from app.services.retrieval.retrieval_utils import (
     clean_content,
     is_blocked_domain
@@ -54,7 +54,7 @@ async def retrieve_web_documents(
             continue
 
         documents.append(
-            DocumentSchema(
+            RetrievedDocumentSchema(
                 title=item.get("title", ""),
                 url=item.get("url", ""),
                 content=content

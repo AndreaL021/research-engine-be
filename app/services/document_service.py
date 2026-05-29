@@ -1,6 +1,8 @@
 from sqlalchemy.orm import Session
 
 from app.models.document_model import DocumentModel
+from app.models.query_document_model import QueryDocumentModel
+from app.models.query_model import QueryModel
 
 
 def get_document_by_url(
@@ -39,3 +41,25 @@ def create_document(
     db.flush()
 
     return document_model
+
+
+def get_cached_documents_count(
+    db: Session,
+    query: str,
+):
+    # retrieve cached query
+    existing_query = db.query(QueryModel).filter(
+        QueryModel.query == query
+    ).first()
+
+    # return empty cache if query does not exist
+    if not existing_query:
+        return 0
+    
+    return (
+        db.query(QueryDocumentModel)
+        .filter(
+            QueryDocumentModel.id_query == existing_query.id
+        )
+        .count()
+    )

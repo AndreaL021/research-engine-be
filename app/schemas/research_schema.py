@@ -5,6 +5,7 @@ class DocumentSchema(BaseModel):
     title: str
     url: str
     content: str
+    distance: float
 
 # response
 class ResearchResponseSchema(BaseModel):
@@ -16,3 +17,8 @@ class ResearchResponseSchema(BaseModel):
 class ResearchRequestSchema(BaseModel):
     query: str
     provider: str = "ddgs"
+
+class RetrievedDocumentSchema(BaseModel):
+    title: str
+    url: str
+    content: str

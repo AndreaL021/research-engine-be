@@ -1,21 +1,19 @@
 import os
-
 from dotenv import load_dotenv
-
 load_dotenv()
 
+# config
 DATABASE_URL = os.getenv("DATABASE_URL")
-
 EXA_API_KEY = os.getenv("EXA_API_KEY")
-
+CHUNK_SIZE = 200
+CHUNK_OVERLAP = 50
+MAX_CHUNK_RESPONSE = 30
+# search
 RETRIEVAL_PROVIDER = "ddgs"
-
 MAX_RESULTS = 5
-
+# check
 MIN_CONTENT_WORDS = 20
-
 MAX_CACHED_DOCUMENTS = 10
-
 BLOCKED_DOMAINS = {
     "facebook.com",
     "instagram.com",
@@ -26,7 +24,6 @@ BLOCKED_DOMAINS = {
     "twitter.com",
     "youtube.com",
 }
-
 TRUSTED_DOMAINS = {
     "wikipedia.org",
     "arxiv.org",
@@ -36,7 +33,3 @@ TRUSTED_DOMAINS = {
     "github.com",
     "openai.com",
 }
-
-CHUNK_SIZE = 200
-
-CHUNK_OVERLAP = 50

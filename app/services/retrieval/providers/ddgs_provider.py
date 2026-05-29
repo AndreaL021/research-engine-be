@@ -1,6 +1,6 @@
 from ddgs import DDGS
 import trafilatura
-from app.schemas.research_schema import DocumentSchema
+from app.schemas.research_schema import RetrievedDocumentSchema
 from urllib.parse import urlparse
 
 from app.config.config import (
@@ -20,7 +20,7 @@ async def retrieve_web_documents(
     cached_length: int
 ):
 
-    documents: list[DocumentSchema] = []
+    documents: list[RetrievedDocumentSchema] = []
     # perform web retrieval through DDGS
     with DDGS() as ddgs:
 
@@ -49,7 +49,7 @@ async def retrieve_web_documents(
             
             domain = urlparse(url).netloc.lower()
 
-            if is_blocked_domain:
+            if is_blocked_domain(domain):
                 continue
 
             # download and extract webpage content
@@ -73,7 +73,7 @@ async def retrieve_web_documents(
 
             # append response document
             documents.append(
-                DocumentSchema(
+                RetrievedDocumentSchema(
                     title=result.get("title"),
                     url=url,
                     content=content,
@@ -86,7 +86,7 @@ async def retrieve_web_documents(
     return documents
 
 
-def rank_document(document: DocumentSchema):
+def rank_document(document: RetrievedDocumentSchema):
 
     domain = urlparse(document.url).netloc.lower()
     
