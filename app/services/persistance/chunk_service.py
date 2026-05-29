@@ -13,6 +13,7 @@ def chunk_content(
     chunk_size: int = CHUNK_SIZE,
     overlap: int = CHUNK_OVERLAP,
 ) -> list[str]:
+    
     words = content.split()
 
     chunks: list[str] = []

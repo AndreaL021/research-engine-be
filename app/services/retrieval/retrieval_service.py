@@ -9,7 +9,7 @@ from app.services.retrieval.providers.exa_provider import (
 from app.services.retrieval.providers.tavily_provider import (
     retrieve_web_documents as retrieve_tavily_documents
 )
-from app.services.embedding_service import generate_embeddings
+from app.services.persistance.embedding_service import generate_embeddings
 from sqlalchemy.orm import Session
 from app.models.embedding_model import EmbeddingModel
 from app.models.chunk_model import ChunkModel

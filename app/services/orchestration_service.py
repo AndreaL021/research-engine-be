@@ -2,12 +2,12 @@
 from sqlalchemy.orm import Session
 from app.database.database import SessionLocal
 # services
-from app.services.query_service import ( get_query_by_text, create_query)
-from app.services.document_service import ( get_document_by_url, create_document, get_cached_documents_count)
-from app.services.relation_service import (get_relation, create_relation)
+from app.services.persistance.query_service import ( get_query_by_text, create_query)
+from app.services.persistance.document_service import ( get_document_by_url, create_document, get_cached_documents_count)
+from app.services.persistance.query_document_service import (get_relation, create_relation)
 from app.services.retrieval.retrieval_service import (retrieve_web_documents, retrieve_similar_chunks)
-from app.services.chunk_service import (create_chunks, chunk_content)
-from app.services.embedding_service import (generate_embeddings, create_embeddings)
+from app.services.persistance.chunk_service import (create_chunks, chunk_content)
+from app.services.persistance.embedding_service import (generate_embeddings, create_embeddings)
 # models
 from app.models.chunk_model import ChunkModel
 from app.models.embedding_model import EmbeddingModel
@@ -31,7 +31,8 @@ async def retrieve_documents(query: str, provider:str):
             db = db,
             query = query,
         )
-
+        
+        # skip web retrieval and perform semantic retrieval directly
         if cached_count >= MAX_CACHED_DOCUMENTS:
             response = retrieve_similar_chunks(
                 db=db,
@@ -56,7 +57,7 @@ async def retrieve_documents(query: str, provider:str):
                 query = query,
             )
 
-        # retrieve fresh documents from external sources
+        # retrieve fresh documents from selected provider
         documents = await retrieve_web_documents(
             query = query,
             cached_length = cached_count,
@@ -72,7 +73,8 @@ async def retrieve_documents(query: str, provider:str):
                 url = document.url
             )
 
-            # create relation for existing document
+            # skip duplicate documents and only create
+            # missing query-document relations
             if existing_document:
                 existing_relation = get_relation(
                     db = db,
@@ -81,7 +83,7 @@ async def retrieve_documents(query: str, provider:str):
                 )
 
                 if not existing_relation:
-                
+                    
                     create_relation(
                         db = db,
                         id_query = query_model.id,
@@ -93,7 +95,7 @@ async def retrieve_documents(query: str, provider:str):
 
             domain = urlparse(document.url).netloc
 
-            # persist document into PostgreSQL
+            # create document into PostgreSQL
             document_model = create_document(
                 db = db,
                 title = document.title,
@@ -103,9 +105,9 @@ async def retrieve_documents(query: str, provider:str):
                 domain = domain
             )
 
+            # split document content into chunks
             chunks = chunk_content(document.content)
-        
-
+            # collect chunks for bulk insertion
             chunk_models.extend(
                 [
                     ChunkModel(
@@ -131,7 +133,8 @@ async def retrieve_documents(query: str, provider:str):
                     id_query = query_model.id,
                     id_document = document_model.id,
                 )
-              
+
+        # no new knowledge was added
         if not chunk_models:
             db.commit()
             response = retrieve_similar_chunks(
@@ -144,7 +147,8 @@ async def retrieve_documents(query: str, provider:str):
             db=db,
             chunks=chunk_models
         ) 
-        
+
+        # generate embeddings for all new chunks
         vectors = generate_embeddings(
             [
                 chunk_model.content
@@ -163,9 +167,11 @@ async def retrieve_documents(query: str, provider:str):
             db=db,
             embeddings=embedding_models
         )
+        
         # commit transaction
         db.commit()
 
+        # perform semantic retrieval on the updated KB
         response = retrieve_similar_chunks(
             db=db,
             query=query,
