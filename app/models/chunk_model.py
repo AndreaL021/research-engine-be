@@ -23,7 +23,8 @@ class ChunkModel(Base):
 
     id_document = Column(
         Integer,
-        ForeignKey("documents.id")
+        ForeignKey("documents.id"),
+        index=True
     )
 
     chunk_index = Column(

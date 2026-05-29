@@ -5,6 +5,7 @@ psycopg==3.3.4
 psycopg-binary==3.3.4
 pgvector==0.4.1
 python-dotenv==1.2.2
+pydantic==2.13.4
 httpx==0.28.1
 ddgs==9.14.4
 trafilatura==2.0.0

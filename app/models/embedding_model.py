@@ -23,7 +23,8 @@ class EmbeddingModel(Base):
 
     id_chunk = Column(
         Integer,
-        ForeignKey("chunks.id")
+        ForeignKey("chunks.id"),
+        unique=True,
     )
 
     vector = Column(
