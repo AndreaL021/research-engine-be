@@ -1,3 +1,7 @@
+from sqlalchemy.orm import Session
+
+from app.models.chunk_model import ChunkModel
+
 from app.config.config import (
     CHUNK_SIZE,
     CHUNK_OVERLAP,
@@ -27,5 +31,16 @@ def chunk_content(
         chunk = " ".join(chunk_words)
 
         chunks.append(chunk)
+
+    return chunks
+
+
+def create_chunks(
+    db: Session,
+    chunks: list[ChunkModel]
+):
+    db.add_all(chunks)
+
+    db.flush()
 
     return chunks

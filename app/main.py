@@ -9,6 +9,8 @@ from app.database.database import engine, Base
 from app.models.document_model import DocumentModel
 from app.models.query_document_model import QueryDocumentModel
 from app.models.query_model import QueryModel
+from app.models.chunk_model import ChunkModel
+from app.models.embedding_model import EmbeddingModel
 
 
 app = FastAPI()
