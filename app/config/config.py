@@ -5,11 +5,12 @@ load_dotenv()
 # config
 DATABASE_URL = os.getenv("DATABASE_URL")
 EXA_API_KEY = os.getenv("EXA_API_KEY")
+SEARXNG_URL = os.getenv("SEARXNG_URL", "http://localhost:8080")
 CHUNK_SIZE = 200
 CHUNK_OVERLAP = 50
 MAX_CHUNK_RESPONSE = 30
 # search
-RETRIEVAL_PROVIDER = "ddgs"
+RETRIEVAL_PROVIDER = "searxng"
 MAX_RESULTS = 5
 # check
 MIN_CONTENT_WORDS = 20

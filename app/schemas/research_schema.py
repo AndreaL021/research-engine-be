@@ -17,7 +17,7 @@ class ResearchResponseSchema(BaseModel):
 # request
 class ResearchRequestSchema(BaseModel):
     query: str
-    provider: str = "ddgs"
+    provider: str = "searxng"
     retrieval_mode: str = "semantic"
 
 class RetrievedDocumentSchema(BaseModel):
