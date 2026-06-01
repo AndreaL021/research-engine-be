@@ -2,6 +2,7 @@ from ddgs import DDGS
 import trafilatura
 from app.schemas.research_schema import RetrievedDocumentSchema
 from urllib.parse import urlparse
+from ddgs.exceptions import DDGSException
 
 from app.config.config import (
     MIN_CONTENT_WORDS, 
@@ -28,10 +29,14 @@ async def retrieve_web_documents(
             cached_length
         )
         
-        results = ddgs.text(
-            query,
-            max_results=results_to_fetch
-        )
+        try:
+            results = ddgs.text(
+                query,
+                max_results=results_to_fetch,
+                backend="duckduckgo"
+            )
+        except DDGSException:
+            return documents
 
         seen_urls = set()
 

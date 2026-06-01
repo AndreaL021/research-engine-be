@@ -15,8 +15,6 @@ class DocumentModel(Base):
 
     url = Column(String, unique=True, nullable=False, index=True)
 
-    content = Column(Text, nullable=False)
-
     content_length = Column(Integer, nullable=False)
 
     domain = Column(String, nullable=False, index=True)

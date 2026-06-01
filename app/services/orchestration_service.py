@@ -1,25 +1,43 @@
 # database
 from sqlalchemy.orm import Session
 from app.database.database import SessionLocal
-# services
-from app.services.persistance.query_service import ( get_query_by_text, create_query)
-from app.services.persistance.document_service import ( get_document_by_url, create_document, get_cached_documents_count)
-from app.services.persistance.query_document_service import (get_relation, create_relation)
-from app.services.retrieval.retrieval_service import (retrieve_web_documents, retrieve_similar_chunks)
-from app.services.persistance.chunk_service import (create_chunks, chunk_content)
-from app.services.persistance.embedding_service import (generate_embeddings, create_embeddings)
 # models
 from app.models.chunk_model import ChunkModel
 from app.models.embedding_model import EmbeddingModel
-
+# services persistance
+from app.services.persistance.document_service import ( 
+    get_document_by_url, 
+    create_document, 
+    get_cached_documents_count
+)
+from app.services.persistance.query_service import ( 
+    get_query_by_text, 
+    create_query
+)
+from app.services.persistance.query_document_service import (
+    get_relation, 
+    create_relation
+)
+from app.services.persistance.chunk_service import (
+    create_chunks, 
+    chunk_content
+)
+from app.services.persistance.embedding_service import (
+    generate_embeddings, 
+    create_embeddings
+)
+# services retrieval
+from app.services.retrieval.retrieval_service import (
+    retrieve_web_documents,
+    retrieve_chunks,
+)
+# other
 from urllib.parse import urlparse
-
 from app.config.config import (MAX_CACHED_DOCUMENTS)
-
 from fastapi import HTTPException
 
 
-async def retrieve_documents(query: str, provider:str):
+async def retrieve_documents(query: str, provider: str, retrieval_mode: str):
 
     # create database session
     db: Session = SessionLocal()
@@ -34,9 +52,10 @@ async def retrieve_documents(query: str, provider:str):
         
         # skip web retrieval and perform semantic retrieval directly
         if cached_count >= MAX_CACHED_DOCUMENTS:
-            response = retrieve_similar_chunks(
+            response = retrieve_chunks(
                 db=db,
                 query=query,
+                retrieval_mode=retrieval_mode,
             )
             return response
 
@@ -100,13 +119,13 @@ async def retrieve_documents(query: str, provider:str):
                 db = db,
                 title = document.title,
                 url = document.url,
-                content = document.content,
                 content_length = content_length,
                 domain = domain
             )
 
             # split document content into chunks
             chunks = chunk_content(document.content)
+
             # collect chunks for bulk insertion
             chunk_models.extend(
                 [
@@ -137,9 +156,10 @@ async def retrieve_documents(query: str, provider:str):
         # no new knowledge was added
         if not chunk_models:
             db.commit()
-            response = retrieve_similar_chunks(
+            response = retrieve_chunks(
                 db=db,
                 query=query,
+                retrieval_mode=retrieval_mode,
             )
             return response  
            
@@ -163,6 +183,7 @@ async def retrieve_documents(query: str, provider:str):
             )
             for index, chunk_model in enumerate(chunk_models)
         ]
+        
         create_embeddings(
             db=db,
             embeddings=embedding_models
@@ -172,9 +193,10 @@ async def retrieve_documents(query: str, provider:str):
         db.commit()
 
         # perform semantic retrieval on the updated KB
-        response = retrieve_similar_chunks(
+        response = retrieve_chunks(
             db=db,
             query=query,
+            retrieval_mode=retrieval_mode,
         )
 
     except Exception as error:

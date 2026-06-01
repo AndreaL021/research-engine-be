@@ -20,7 +20,6 @@ def create_document(
     db: Session,
     title: str,
     url: str,
-    content: str,
     content_length:int,
     domain:str,
 ):
@@ -29,7 +28,6 @@ def create_document(
     document_model = DocumentModel(
         title=title,
         url=url,
-        content=content,
         content_length=content_length,
         domain=domain,
     )
