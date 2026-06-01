@@ -5,10 +5,13 @@ load_dotenv()
 # config
 DATABASE_URL = os.getenv("DATABASE_URL")
 EXA_API_KEY = os.getenv("EXA_API_KEY")
-SEARXNG_URL = os.getenv("SEARXNG_URL", "http://localhost:8080")
+SEARXNG_URL = os.getenv("SEARXNG_URL")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL")
 CHUNK_SIZE = 200
 CHUNK_OVERLAP = 50
 MAX_CHUNK_RESPONSE = 30
+RERANKER_MODEL = os.getenv("RERANKER_MODEL")
+MIN_RERANKER_SCORE = 0.2
 # search
 RETRIEVAL_PROVIDER = "searxng"
 MAX_RESULTS = 5

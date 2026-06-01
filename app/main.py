@@ -11,11 +11,14 @@ from app.models.query_document_model import QueryDocumentModel
 from app.models.query_model import QueryModel
 from app.models.chunk_model import ChunkModel
 from app.models.embedding_model import EmbeddingModel
+from app.services.persistance.embedding_service import get_embedding_model
 
 
 app = FastAPI()
 
 Base.metadata.create_all(bind=engine)
+
+get_embedding_model()
 
 app.add_middleware(
     CORSMiddleware,
