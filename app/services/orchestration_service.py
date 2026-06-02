@@ -26,14 +26,19 @@ from app.services.persistance.embedding_service import (
     generate_embeddings, 
     create_embeddings
 )
+from app.services.persistance.entity_service import (
+    create_chunk_entities,
+)
 # services retrieval
 from app.services.retrieval.retrieval_service import (
     classify_source_type,
     calculate_source_reliability,
     detect_content_type,
+    extract_publication_date,
     retrieve_web_documents,
     retrieve_chunks,
 )
+from app.services.llm.llm_service import generate_answer
 # other
 from urllib.parse import urlparse
 from app.config.config import (MAX_CACHED_DOCUMENTS)
@@ -61,7 +66,10 @@ async def retrieve_documents(query: str, provider: str, retrieval_mode: str):
                 query=query,
                 retrieval_mode=retrieval_mode,
             )
-            return response
+            return create_research_result(
+                query=query,
+                documents=response,
+            )
 
         # retrieve existing query or create a new one
         existing_query = get_query_by_text(
@@ -139,6 +147,13 @@ async def retrieve_documents(query: str, provider: str, retrieval_mode: str):
                 document.engine,
             )
 
+            published_at = extract_publication_date(
+                url=document.url,
+                title=document.title,
+                content=document.content,
+                published_at=document.published_at,
+            )
+
             # create document into PostgreSQL
             document_model = create_document(
                 db = db,
@@ -152,7 +167,7 @@ async def retrieve_documents(query: str, provider: str, retrieval_mode: str):
                 source_reliability = source_reliability,
                 search_engine = document.engine,
                 search_category = document.category,
-                published_at = document.published_at,
+                published_at = published_at,
                 search_score = int(document.search_score * 100) if document.search_score is not None else None,
             )
             
@@ -195,12 +210,22 @@ async def retrieve_documents(query: str, provider: str, retrieval_mode: str):
                 query=query,
                 retrieval_mode=retrieval_mode,
             )
-            return response  
+            return create_research_result(
+                query=query,
+                documents=response,
+            )
            
         create_chunks(
             db=db,
             chunks=chunk_models
         ) 
+
+        # Entities are extracted after chunks are flushed so relations can use
+        # generated chunk ids.
+        create_chunk_entities(
+            db=db,
+            chunks=chunk_models,
+        )
 
         # generate embeddings for all new chunks
         vectors = generate_embeddings(
@@ -247,4 +272,20 @@ async def retrieve_documents(query: str, provider: str, retrieval_mode: str):
         # always close database session
         db.close()
         
-    return response
+    return create_research_result(
+        query=query,
+        documents=response,
+    )
+
+
+def create_research_result(
+    query: str,
+    documents: list,
+):
+    return {
+        "documents": documents,
+        "answer": generate_answer(
+            query=query,
+            documents=documents,
+        ),
+    }

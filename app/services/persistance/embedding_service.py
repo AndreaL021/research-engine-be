@@ -15,6 +15,10 @@ def get_embedding_model():
     return SentenceTransformer(EMBEDDING_MODEL)
 
 
+def preload_embedding_model():
+    get_embedding_model()
+
+
 def generate_embeddings(
     texts: list[str]
 ):

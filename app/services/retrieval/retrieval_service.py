@@ -31,6 +31,7 @@ from app.services.retrieval.scoring_service import (
 )
 from sqlalchemy import case, desc, func, or_
 from urllib.parse import urlparse
+from datetime import date
 import re
 
 
@@ -491,3 +492,38 @@ def calculate_source_reliability(
         return 45
 
     return 55
+
+
+def extract_publication_date(
+    url: str,
+    title: str = "",
+    content: str = "",
+    published_at: str | None = None,
+):
+    if published_at:
+        return published_at
+
+    text = f"{url} {title} {content[:1000]}"
+
+    date_match = re.search(
+        r"\b(20\d{2}|19\d{2})[-/](0?[1-9]|1[0-2])[-/](0?[1-9]|[12]\d|3[01])\b",
+        text,
+    )
+
+    if date_match:
+        year, month, day = date_match.groups()
+        return date(
+            int(year),
+            int(month),
+            int(day),
+        ).isoformat()
+
+    year_match = re.search(
+        r"\b(20\d{2}|19\d{2})\b",
+        text,
+    )
+
+    if year_match:
+        return year_match.group(1)
+
+    return None

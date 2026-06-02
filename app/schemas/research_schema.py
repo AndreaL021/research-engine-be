@@ -21,6 +21,7 @@ class ResearchResponseSchema(BaseModel):
     documents: list[DocumentSchema]
     provider: str
     retrieval_mode: str
+    answer: str | None = None
     
 # request
 class ResearchRequestSchema(BaseModel):

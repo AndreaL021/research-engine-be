@@ -1,4 +1,5 @@
 from functools import lru_cache
+from datetime import datetime
 
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
@@ -26,6 +27,8 @@ CONTENT_TYPE_BOOSTS = {
     "press_release": -0.02,
 }
 
+MAX_FRESHNESS_BOOST = 0.04
+
 
 def apply_metadata_boost(
     documents: list[DocumentSchema],
@@ -44,10 +47,12 @@ def calculate_metadata_aware_score(document: DocumentSchema):
     # Keep metadata as a light boost: relevance should still dominate, but
     # stronger sources should win ties between similarly relevant chunks.
     reliability_boost = (document.source_reliability - 50) / 1000
+    freshness_boost = calculate_freshness_boost(document.published_at)
 
     boosted_score = (
         document.score
         + reliability_boost
+        + freshness_boost
         + SOURCE_TYPE_BOOSTS.get(document.source_type, 0)
         + CONTENT_TYPE_BOOSTS.get(document.content_type, 0)
     )
@@ -58,6 +63,37 @@ def calculate_metadata_aware_score(document: DocumentSchema):
     )
 
 
+def calculate_freshness_boost(published_at: str | None):
+    if not published_at:
+        return 0
+
+    year = parse_year(published_at)
+
+    if not year:
+        return 0
+
+    current_year = datetime.utcnow().year
+    age = max(0, current_year - year)
+
+    if age <= 1:
+        return MAX_FRESHNESS_BOOST
+
+    if age <= 3:
+        return MAX_FRESHNESS_BOOST * 0.6
+
+    if age <= 5:
+        return MAX_FRESHNESS_BOOST * 0.3
+
+    return 0
+
+
+def parse_year(value: str):
+    try:
+        return int(value[:4])
+    except (TypeError, ValueError):
+        return None
+
+
 @lru_cache(maxsize=1)
 def get_reranker():
     # Loading is expensive, so keep one model instance alive for the process.
@@ -65,6 +101,10 @@ def get_reranker():
     model = AutoModelForSequenceClassification.from_pretrained(RERANKER_MODEL)
     model.eval()
     return tokenizer, model
+
+
+def preload_reranker():
+    get_reranker()
 
 
 def rerank_chunks(
