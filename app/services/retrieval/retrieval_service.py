@@ -49,6 +49,8 @@ def retrieve_chunks(db: Session, query: str, retrieval_mode: str):
             limit=MAX_CHUNK_RESPONSE,
         )
 
+    # Metadata boosts choose better reranker candidates without replacing the
+    # actual semantic/lexical relevance score.
     boosted_documents = apply_metadata_boost(
         documents
     )
@@ -226,6 +228,8 @@ def retrieve_lexical_chunks(
     if documents:
         return documents
 
+    # PostgreSQL full-text search can be strict for natural-language questions;
+    # fallback to keyword overlap keeps lexical mode useful for sparse matches.
     return retrieve_keyword_chunks(
         db=db,
         query=query,
@@ -328,6 +332,8 @@ def select_reranker_candidates(
     documents: list[DocumentSchema],
     limit: int,
 ):
+    # First pass favors source diversity; second pass fills remaining slots with
+    # the best leftover chunks regardless of URL.
     selected_documents = []
     selected_urls = set()
 

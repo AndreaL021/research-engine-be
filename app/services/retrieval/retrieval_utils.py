@@ -16,6 +16,7 @@ def is_blocked_domain(
 def clean_content(
     content: str
 ):
+    # Remove common article/navigation boilerplate before chunking and embedding.
     content = re.sub(r"#{1,6}\s*", " ", content)
 
     content = re.sub(r"\b(RSS|Search|Subscribe|Share|Filed|Issue)\b", " ", content)

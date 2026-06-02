@@ -11,6 +11,7 @@ from app.models.embedding_model import (
 
 @lru_cache(maxsize=1)
 def get_embedding_model():
+    # The embedding model is reused across requests instead of reloaded per call.
     return SentenceTransformer(EMBEDDING_MODEL)
 
 

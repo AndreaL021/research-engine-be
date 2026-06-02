@@ -41,6 +41,8 @@ def apply_metadata_boost(
 
 
 def calculate_metadata_aware_score(document: DocumentSchema):
+    # Keep metadata as a light boost: relevance should still dominate, but
+    # stronger sources should win ties between similarly relevant chunks.
     reliability_boost = (document.source_reliability - 50) / 1000
 
     boosted_score = (
@@ -58,6 +60,7 @@ def calculate_metadata_aware_score(document: DocumentSchema):
 
 @lru_cache(maxsize=1)
 def get_reranker():
+    # Loading is expensive, so keep one model instance alive for the process.
     tokenizer = AutoTokenizer.from_pretrained(RERANKER_MODEL)
     model = AutoModelForSequenceClassification.from_pretrained(RERANKER_MODEL)
     model.eval()
@@ -97,6 +100,8 @@ def rerank_chunks(
     except Exception:
         return documents[:limit]
 
+    # Cross-encoder scores are useful as an ordering signal, not as calibrated
+    # probabilities, so normalize them within the current candidate set.
     scores = normalize_scores(raw_scores)
 
     reranked_documents = [

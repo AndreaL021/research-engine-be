@@ -3,6 +3,7 @@ import trafilatura
 from urllib.parse import urlparse
 
 from app.config.config import (
+    MAX_CACHED_DOCUMENTS,
     MIN_CONTENT_WORDS,
     SEARXNG_URL,
     TRUSTED_DOMAINS,
@@ -13,6 +14,9 @@ from app.services.retrieval.retrieval_utils import (
     get_results_to_fetch,
     is_blocked_domain,
 )
+
+
+MAX_TRAFILATURA_DOWNLOADS = 5
 
 
 async def retrieve_web_documents(
@@ -41,8 +45,13 @@ async def retrieve_web_documents(
 
     data = response.json()
     seen_urls = set()
+    # Rank cheap SearXNG candidates first, then spend Trafilatura downloads only
+    # on the most promising URLs.
+    ranked_results = rank_search_results(
+        data.get("results", [])
+    )
 
-    for result in data.get("results", [])[:results_to_fetch]:
+    for result in ranked_results[:results_to_fetch]:
         url = result.get("url")
 
         if not url:
@@ -58,12 +67,17 @@ async def retrieve_web_documents(
         if is_blocked_domain(domain):
             continue
 
-        downloaded = trafilatura.fetch_url(url)
+        content = result.get("content")
 
-        content = trafilatura.extract(downloaded)
+        # SearXNG snippets are fast but shallow; Trafilatura is slower, so it is
+        # limited to the best candidates and used to build richer chunks.
+        if len(documents) < MAX_TRAFILATURA_DOWNLOADS:
+            downloaded = trafilatura.fetch_url(url)
 
-        if not content:
-            content = result.get("content")
+            extracted_content = trafilatura.extract(downloaded)
+
+            if extracted_content:
+                content = extracted_content
 
         if not content:
             continue
@@ -90,6 +104,66 @@ async def retrieve_web_documents(
     )
 
     return documents
+
+
+def rank_search_results(results: list[dict]):
+    candidates = []
+    seen_urls = set()
+
+    # Inspect more search results than we plan to store, so duplicate/blocked
+    # URLs do not exhaust the candidate pool too early.
+    for result in results[:MAX_CACHED_DOCUMENTS * 2]:
+        url = result.get("url")
+
+        if not url:
+            continue
+
+        if url in seen_urls:
+            continue
+
+        seen_urls.add(url)
+
+        domain = urlparse(url).netloc.lower()
+
+        if is_blocked_domain(domain):
+            continue
+
+        candidates.append(result)
+
+    candidates.sort(
+        key=rank_search_result,
+        reverse=True,
+    )
+
+    return candidates
+
+
+def rank_search_result(result: dict):
+    url = result.get("url", "")
+    domain = urlparse(url).netloc.lower()
+    content = result.get("content") or ""
+    category = (result.get("category") or "").lower()
+    engine = (get_search_engine(result) or "").lower()
+    search_score = parse_search_score(result.get("score")) or 0
+
+    # This score is only a pre-download heuristic. The final ranking still uses
+    # chunk retrieval, metadata boosts, and the reranker.
+    trusted_boost = 0.2 if any(
+        domain.endswith(trusted_domain)
+        for trusted_domain in TRUSTED_DOMAINS
+    ) else 0
+
+    academic_boost = 0.15 if any(
+        keyword in f"{category} {engine} {domain}"
+        for keyword in ("arxiv", "pubmed", "semantic scholar", "science", "academic")
+    ) else 0
+
+    snippet_boost = min(
+        len(content.split()) / 80,
+        0.2,
+    )
+
+    return search_score + trusted_boost + academic_boost + snippet_boost
 
 
 def rank_document(document: RetrievedDocumentSchema):

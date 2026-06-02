@@ -18,6 +18,7 @@ def chunk_content(
 
     chunks: list[str] = []
 
+    # Overlap preserves context across chunk boundaries for retrieval.
     step = chunk_size - overlap
 
     for start in range(0, len(words), step):

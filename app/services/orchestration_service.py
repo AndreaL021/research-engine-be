@@ -53,7 +53,8 @@ async def retrieve_documents(query: str, provider: str, retrieval_mode: str):
             query = query,
         )
         
-        # skip web retrieval and perform semantic retrieval directly
+        # Once the query has enough linked sources, avoid repeated web calls that
+        # usually return duplicates and go directly to local retrieval.
         if cached_count >= MAX_CACHED_DOCUMENTS:
             response = retrieve_chunks(
                 db=db,
@@ -117,6 +118,8 @@ async def retrieve_documents(query: str, provider: str, retrieval_mode: str):
 
             domain = urlparse(document.url).netloc
 
+            # Enrich source metadata before chunking so every returned chunk can
+            # carry document-level provenance and reliability signals.
             source_type = classify_source_type(
                 document.url,
                 document.category,
@@ -183,7 +186,8 @@ async def retrieve_documents(query: str, provider: str, retrieval_mode: str):
                     id_document = document_model.id,
                 )
 
-        # no new knowledge was added
+        # If the provider only returned duplicates, reuse the existing knowledge
+        # base instead of failing the request.
         if not chunk_models:
             db.commit()
             response = retrieve_chunks(
