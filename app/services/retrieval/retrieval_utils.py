@@ -3,7 +3,7 @@ from app.config.config import (
     MAX_CACHED_DOCUMENTS,
     MAX_RESULTS,
 )
-
+import re
 
 def is_blocked_domain(
     domain: str
@@ -16,11 +16,17 @@ def is_blocked_domain(
 def clean_content(
     content: str
 ):
-    content = " ".join(
-        content.split()
-    )
+    content = re.sub(r"#{1,6}\s*", " ", content)
 
-    return content[:10000]
+    content = re.sub(r"\b(RSS|Search|Subscribe|Share|Filed|Issue)\b", " ", content)
+
+    content = re.sub(r"\b\d+\s+min read\b", " ", content, flags=re.IGNORECASE)
+
+    content = re.sub(r"Paper\s*↗", " ", content)
+
+    content = re.sub(r"\s+", " ", content)
+
+    return content.strip()[:10000]
 
 def get_results_to_fetch(
     cached_length: int
@@ -34,3 +40,5 @@ def get_results_to_fetch(
         MAX_RESULTS,
         remaining_results
     )
+
+

@@ -18,16 +18,20 @@ from sqlalchemy.orm import Session
 from app.models.embedding_model import EmbeddingModel
 from app.models.chunk_model import ChunkModel
 from app.models.document_model import DocumentModel
-from app.config.config import MAX_CHUNK_RESPONSE
+from app.config.config import (
+    MAX_CHUNK_RESPONSE,
+    MIN_LEXICAL_SCORE,
+    MIN_SEMANTIC_SCORE,
+    RERANKER_CANDIDATES,
+)
 from app.schemas.research_schema import DocumentSchema
-from app.services.retrieval.reranking_service import rerank_chunks
+from app.services.retrieval.scoring_service import (
+    apply_metadata_boost,
+    rerank_chunks,
+)
 from sqlalchemy import case, desc, func, or_
+from urllib.parse import urlparse
 import re
-
-
-MIN_SEMANTIC_SCORE = 0.2
-MIN_LEXICAL_SCORE = 0.0
-RERANKER_CANDIDATES = 10
 
 
 # development
@@ -45,11 +49,20 @@ def retrieve_chunks(db: Session, query: str, retrieval_mode: str):
             limit=MAX_CHUNK_RESPONSE,
         )
 
-    documents = sorted(
-        documents,
+    boosted_documents = apply_metadata_boost(
+        documents
+    )
+
+    sorted_documents = sorted(
+        boosted_documents,
         key=lambda document: document.score,
         reverse=True,
-    )[:RERANKER_CANDIDATES]
+    )
+
+    documents = select_reranker_candidates(
+        sorted_documents,
+        limit=RERANKER_CANDIDATES,
+    )
 
     return rerank_chunks(
         query=query,
@@ -141,7 +154,15 @@ def retrieve_similar_chunks(
                 title=document.title,
                 url=document.url,
                 content=chunk.content,
-                score=score
+                score=score,
+                provider=document.provider,
+                source_type=document.source_type,
+                content_type=document.content_type,
+                source_reliability=document.source_reliability,
+                search_engine=document.search_engine,
+                search_category=document.search_category,
+                published_at=document.published_at,
+                search_score=document.search_score,
             )
         )
 
@@ -189,7 +210,15 @@ def retrieve_lexical_chunks(
             title=document.title,
             url=document.url,
             content=chunk.content,
-            score=float(score)
+            score=float(score),
+            provider=document.provider,
+            source_type=document.source_type,
+            content_type=document.content_type,
+            source_reliability=document.source_reliability,
+            search_engine=document.search_engine,
+            search_category=document.search_category,
+            published_at=document.published_at,
+            search_score=document.search_score,
         )
         for document, chunk, score in result
     ]
@@ -257,7 +286,15 @@ def retrieve_keyword_chunks(
             title=document.title,
             url=document.url,
             content=chunk.content,
-            score=float(score) / max_score
+            score=float(score) / max_score,
+            provider=document.provider,
+            source_type=document.source_type,
+            content_type=document.content_type,
+            source_reliability=document.source_reliability,
+            search_engine=document.search_engine,
+            search_category=document.search_category,
+            published_at=document.published_at,
+            search_score=document.search_score,
         )
         for document, chunk, score in result
         if score > 0
@@ -285,3 +322,166 @@ def extract_query_terms(query: str):
         for term in re.findall(r"\b[a-zA-Z0-9]{3,}\b", query.lower())
         if term not in stopwords
     ]
+
+
+def select_reranker_candidates(
+    documents: list[DocumentSchema],
+    limit: int,
+):
+    selected_documents = []
+    selected_urls = set()
+
+    for document in documents:
+        if document.url in selected_urls:
+            continue
+
+        selected_documents.append(document)
+        selected_urls.add(document.url)
+
+        if len(selected_documents) >= limit:
+            return selected_documents
+
+    selected_document_ids = {
+        id(document)
+        for document in selected_documents
+    }
+
+    for document in documents:
+        if id(document) in selected_document_ids:
+            continue
+
+        selected_documents.append(document)
+
+        if len(selected_documents) >= limit:
+            break
+
+    return selected_documents
+
+
+def classify_source_type(
+    url: str,
+    category: str | None = None,
+    engine: str | None = None,
+):
+    domain = urlparse(url).netloc.lower()
+    metadata = f"{category or ''} {engine or ''}".lower()
+
+    if any(keyword in metadata for keyword in {"arxiv", "pubmed", "semantic scholar", "science"}):
+        return "academic"
+
+    if "news" in metadata:
+        return "news"
+
+    if any(
+        domain.endswith(academic_domain)
+        for academic_domain in {
+            "arxiv.org",
+            "nature.com",
+            "sciencedirect.com",
+            "ncbi.nlm.nih.gov",
+            "pubmed.ncbi.nlm.nih.gov",
+            "springer.com",
+            "ieee.org",
+            "acm.org",
+        }
+    ):
+        return "academic"
+
+    if any(
+        domain.endswith(documentation_domain)
+        for documentation_domain in {
+            "docs.python.org",
+            "developer.mozilla.org",
+            "docs.microsoft.com",
+            "cloud.google.com",
+            "docs.aws.amazon.com",
+            "openai.com",
+        }
+    ):
+        return "documentation"
+
+    if any(
+        domain.endswith(news_domain)
+        for news_domain in {
+            "bbc.com",
+            "reuters.com",
+            "apnews.com",
+            "nytimes.com",
+            "theguardian.com",
+        }
+    ):
+        return "news"
+
+    if any(
+        domain.endswith(forum_domain)
+        for forum_domain in {
+            "reddit.com",
+            "stackoverflow.com",
+            "stackexchange.com",
+            "quora.com",
+        }
+    ):
+        return "forum"
+
+    return "web"
+
+
+def detect_content_type(
+    url: str,
+    title: str = "",
+    category: str | None = None,
+    engine: str | None = None,
+):
+    domain = urlparse(url).netloc.lower()
+    path = urlparse(url).path.lower()
+    metadata = f"{title} {category or ''} {engine or ''}".lower()
+
+    if path.endswith(".pdf"):
+        return "pdf"
+
+    source_type = classify_source_type(url, category, engine)
+
+    if source_type == "academic":
+        return "paper"
+
+    if source_type == "documentation":
+        return "documentation"
+
+    if source_type == "news":
+        return "news"
+
+    if source_type == "forum":
+        return "forum"
+
+    if "blog" in path or "blog" in metadata:
+        return "blog"
+
+    if "press" in path or "press release" in metadata:
+        return "press_release"
+
+    if domain.startswith("docs."):
+        return "documentation"
+
+    return "article"
+
+
+def calculate_source_reliability(
+    url: str,
+    category: str | None = None,
+    engine: str | None = None,
+):
+    source_type = classify_source_type(url, category, engine)
+
+    if source_type == "academic":
+        return 90
+
+    if source_type == "documentation":
+        return 85
+
+    if source_type == "news":
+        return 70
+
+    if source_type == "forum":
+        return 45
+
+    return 55

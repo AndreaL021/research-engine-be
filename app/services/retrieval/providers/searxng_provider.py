@@ -78,6 +78,10 @@ async def retrieve_web_documents(
                 title=result.get("title", ""),
                 url=url,
                 content=content,
+                engine=get_search_engine(result),
+                category=result.get("category"),
+                published_at=result.get("publishedDate"),
+                search_score=parse_search_score(result.get("score")),
             )
         )
 
@@ -102,3 +106,22 @@ def rank_document(document: RetrievedDocumentSchema):
         is_untrusted,
         -content_length,
     )
+
+
+def get_search_engine(result: dict):
+    engines = result.get("engines")
+
+    if isinstance(engines, list) and engines:
+        return ", ".join(engines)
+
+    return result.get("engine")
+
+
+def parse_search_score(score):
+    if score is None:
+        return None
+
+    try:
+        return float(score)
+    except (TypeError, ValueError):
+        return None

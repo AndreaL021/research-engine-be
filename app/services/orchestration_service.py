@@ -28,6 +28,9 @@ from app.services.persistance.embedding_service import (
 )
 # services retrieval
 from app.services.retrieval.retrieval_service import (
+    classify_source_type,
+    calculate_source_reliability,
+    detect_content_type,
     retrieve_web_documents,
     retrieve_chunks,
 )
@@ -114,15 +117,42 @@ async def retrieve_documents(query: str, provider: str, retrieval_mode: str):
 
             domain = urlparse(document.url).netloc
 
+            source_type = classify_source_type(
+                document.url,
+                document.category,
+                document.engine,
+            )
+
+            content_type = detect_content_type(
+                document.url,
+                document.title,
+                document.category,
+                document.engine,
+            )
+
+            source_reliability = calculate_source_reliability(
+                document.url,
+                document.category,
+                document.engine,
+            )
+
             # create document into PostgreSQL
             document_model = create_document(
                 db = db,
                 title = document.title,
                 url = document.url,
                 content_length = content_length,
-                domain = domain
+                domain = domain,
+                provider = provider,
+                source_type = source_type,
+                content_type = content_type,
+                source_reliability = source_reliability,
+                search_engine = document.engine,
+                search_category = document.category,
+                published_at = document.published_at,
+                search_score = int(document.search_score * 100) if document.search_score is not None else None,
             )
-
+            
             # split document content into chunks
             chunks = chunk_content(document.content)
 

@@ -22,6 +22,14 @@ def create_document(
     url: str,
     content_length:int,
     domain:str,
+    provider: str,
+    source_type: str,
+    content_type: str,
+    source_reliability: int,
+    search_engine: str | None,
+    search_category: str | None,
+    published_at: str | None,
+    search_score: int | None,
 ):
 
     # create new document model
@@ -30,6 +38,14 @@ def create_document(
         url=url,
         content_length=content_length,
         domain=domain,
+        provider=provider,
+        source_type=source_type,
+        content_type=content_type,
+        source_reliability=source_reliability,
+        search_engine=search_engine,
+        search_category=search_category,
+        published_at=published_at,
+        search_score=search_score,
     )
 
     # persist document into database

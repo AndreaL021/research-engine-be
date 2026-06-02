@@ -6,6 +6,14 @@ class DocumentSchema(BaseModel):
     url: str
     content: str
     score: float
+    provider: str
+    source_type: str
+    content_type: str
+    source_reliability: int
+    search_engine: str | None = None
+    search_category: str | None = None
+    published_at: str | None = None
+    search_score: int | None = None
 
 # response
 class ResearchResponseSchema(BaseModel):
@@ -24,3 +32,7 @@ class RetrievedDocumentSchema(BaseModel):
     title: str
     url: str
     content: str
+    engine: str | None = None
+    category: str | None = None
+    published_at: str | None = None
+    search_score: float | None = None
