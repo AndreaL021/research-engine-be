@@ -2,7 +2,7 @@ from contextlib import contextmanager
 from hashlib import sha256
 from time import perf_counter
 
-from app.config.config import TRACKIO_PROJECT
+from app.config.config import LLM_PROVIDER, TRACKIO_PROJECT
 
 
 try:
@@ -32,6 +32,7 @@ class PipelineTracker:
                     "query_length": len(query),
                     "provider": provider,
                     "retrieval_mode": retrieval_mode,
+                    "llm_provider": LLM_PROVIDER,
                 },
             )
 
