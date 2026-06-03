@@ -83,6 +83,7 @@ tomli==2.4.1
 tomli_w==1.2.0
 torch==2.12.0
 tqdm==4.67.3
+trackio==0.26.0
 trafilatura==2.0.0
 transformers==5.9.0
 typer==0.25.1

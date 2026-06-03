@@ -28,6 +28,9 @@ def create_document(
     source_reliability: int,
     search_engine: str | None,
     search_category: str | None,
+    author: str | None,
+    categories: str | None,
+    tags: str | None,
     published_at: str | None,
     search_score: int | None,
 ):
@@ -44,6 +47,9 @@ def create_document(
         source_reliability=source_reliability,
         search_engine=search_engine,
         search_category=search_category,
+        author=author,
+        categories=categories,
+        tags=tags,
         published_at=published_at,
         search_score=search_score,
     )

@@ -29,6 +29,7 @@ from app.services.retrieval.scoring_service import (
     apply_metadata_boost,
     rerank_chunks,
 )
+from app.services.tracking_service import PipelineTracker
 from sqlalchemy import case, desc, func, or_
 from urllib.parse import urlparse
 from datetime import date
@@ -36,36 +37,96 @@ import re
 
 
 # development
-def retrieve_chunks(db: Session, query: str, retrieval_mode: str):
+def retrieve_chunks(
+    db: Session,
+    query: str,
+    retrieval_mode: str,
+    tracker: PipelineTracker | None = None,
+):
     if retrieval_mode == "lexical":
-        documents = retrieve_lexical_chunks(
-            db=db,
-            query=query,
-            limit=MAX_CHUNK_RESPONSE,
-        )
+        if tracker:
+            with tracker.measure("lexical_chunk_search"):
+                documents = retrieve_lexical_chunks(
+                    db=db,
+                    query=query,
+                    limit=MAX_CHUNK_RESPONSE,
+                )
+        else:
+            documents = retrieve_lexical_chunks(
+                db=db,
+                query=query,
+                limit=MAX_CHUNK_RESPONSE,
+            )
     else:
-        documents = retrieve_similar_chunks(
-            db=db,
-            query=query,
-            limit=MAX_CHUNK_RESPONSE,
-        )
+        if tracker:
+            with tracker.measure("semantic_chunk_search"):
+                documents = retrieve_similar_chunks(
+                    db=db,
+                    query=query,
+                    limit=MAX_CHUNK_RESPONSE,
+                )
+        else:
+            documents = retrieve_similar_chunks(
+                db=db,
+                query=query,
+                limit=MAX_CHUNK_RESPONSE,
+            )
 
     # Metadata boosts choose better reranker candidates without replacing the
     # actual semantic/lexical relevance score.
-    boosted_documents = apply_metadata_boost(
-        documents
-    )
+    if tracker:
+        tracker.log(
+            {
+                "retrieval_candidates": len(documents),
+            }
+        )
+        with tracker.measure("metadata_boost"):
+            boosted_documents = apply_metadata_boost(
+                documents
+            )
+    else:
+        boosted_documents = apply_metadata_boost(
+            documents
+        )
 
-    sorted_documents = sorted(
-        boosted_documents,
-        key=lambda document: document.score,
-        reverse=True,
-    )
+    if tracker:
+        with tracker.measure("candidate_sort"):
+            sorted_documents = sorted(
+                boosted_documents,
+                key=lambda document: document.score,
+                reverse=True,
+            )
+    else:
+        sorted_documents = sorted(
+            boosted_documents,
+            key=lambda document: document.score,
+            reverse=True,
+        )
 
-    documents = select_reranker_candidates(
-        sorted_documents,
-        limit=RERANKER_CANDIDATES,
-    )
+    if tracker:
+        with tracker.measure("candidate_selection"):
+            documents = select_reranker_candidates(
+                sorted_documents,
+                limit=RERANKER_CANDIDATES,
+            )
+        tracker.log(
+            {
+                "reranker_candidates": len(documents),
+            }
+        )
+    else:
+        documents = select_reranker_candidates(
+            sorted_documents,
+            limit=RERANKER_CANDIDATES,
+        )
+
+    if tracker:
+        with tracker.measure("reranker"):
+            return rerank_chunks(
+                query=query,
+                documents=documents,
+                limit=MAX_CHUNK_RESPONSE,
+            )
 
     return rerank_chunks(
         query=query,
@@ -164,6 +225,9 @@ def retrieve_similar_chunks(
                 source_reliability=document.source_reliability,
                 search_engine=document.search_engine,
                 search_category=document.search_category,
+                author=document.author,
+                categories=document.categories,
+                tags=document.tags,
                 published_at=document.published_at,
                 search_score=document.search_score,
             )
@@ -220,6 +284,9 @@ def retrieve_lexical_chunks(
             source_reliability=document.source_reliability,
             search_engine=document.search_engine,
             search_category=document.search_category,
+            author=document.author,
+            categories=document.categories,
+            tags=document.tags,
             published_at=document.published_at,
             search_score=document.search_score,
         )
@@ -298,6 +365,9 @@ def retrieve_keyword_chunks(
             source_reliability=document.source_reliability,
             search_engine=document.search_engine,
             search_category=document.search_category,
+            author=document.author,
+            categories=document.categories,
+            tags=document.tags,
             published_at=document.published_at,
             search_score=document.search_score,
         )

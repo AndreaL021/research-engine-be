@@ -11,6 +11,7 @@ from app.config.config import (
 from app.schemas.research_schema import RetrievedDocumentSchema
 from app.services.retrieval.retrieval_utils import (
     clean_content,
+    extract_trafilatura_metadata,
     get_results_to_fetch,
     is_blocked_domain,
 )
@@ -68,16 +69,22 @@ async def retrieve_web_documents(
             continue
 
         content = result.get("content")
+        extracted_metadata = {}
 
         # SearXNG snippets are fast but shallow; Trafilatura is slower, so it is
         # limited to the best candidates and used to build richer chunks.
         if len(documents) < MAX_TRAFILATURA_DOWNLOADS:
             downloaded = trafilatura.fetch_url(url)
 
-            extracted_content = trafilatura.extract(downloaded)
+            extracted_metadata = extract_trafilatura_metadata(
+                downloaded=downloaded,
+                url=url,
+            )
 
-            if extracted_content:
-                content = extracted_content
+            if extracted_metadata.get("content"):
+                content = extracted_metadata["content"]
+            else:
+                extracted_metadata = {}
 
         if not content:
             continue
@@ -89,12 +96,15 @@ async def retrieve_web_documents(
 
         documents.append(
             RetrievedDocumentSchema(
-                title=result.get("title", ""),
+                title=result.get("title") or extracted_metadata.get("title") or "",
                 url=url,
                 content=content,
                 engine=get_search_engine(result),
                 category=result.get("category"),
-                published_at=result.get("publishedDate"),
+                author=extracted_metadata.get("author"),
+                categories=extracted_metadata.get("categories"),
+                tags=extracted_metadata.get("tags"),
+                published_at=result.get("publishedDate") or extracted_metadata.get("published_at"),
                 search_score=parse_search_score(result.get("score")),
             )
         )

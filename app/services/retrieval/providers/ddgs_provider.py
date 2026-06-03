@@ -11,6 +11,7 @@ from app.config.config import (
 
 from app.services.retrieval.retrieval_utils import (
     clean_content,
+    extract_trafilatura_metadata,
     get_results_to_fetch,
     is_blocked_domain,
 )
@@ -57,10 +58,17 @@ async def retrieve_web_documents(
             if is_blocked_domain(domain):
                 continue
 
-            # download and extract webpage content
+            provider_metadata = extract_ddgs_metadata(result)
+
+            # download and extract webpage content plus metadata
             downloaded = trafilatura.fetch_url(url)
 
-            content = trafilatura.extract(downloaded)
+            extracted_metadata = extract_trafilatura_metadata(
+                downloaded=downloaded,
+                url=url,
+            )
+
+            content = extracted_metadata.get("content")
 
             # fallback to DDGS snippet if extraction fails
             if not content:
@@ -79,9 +87,16 @@ async def retrieve_web_documents(
             # append response document
             documents.append(
                 RetrievedDocumentSchema(
-                    title=result.get("title"),
+                    title=provider_metadata.get("title") or extracted_metadata.get("title") or "",
                     url=url,
                     content=content,
+                    engine=provider_metadata.get("engine"),
+                    category=provider_metadata.get("category"),
+                    author=provider_metadata.get("author") or extracted_metadata.get("author"),
+                    categories=provider_metadata.get("categories") or extracted_metadata.get("categories"),
+                    tags=provider_metadata.get("tags") or extracted_metadata.get("tags"),
+                    published_at=provider_metadata.get("published_at") or extracted_metadata.get("published_at"),
+                    search_score=provider_metadata.get("search_score"),
                 )
             )
 
@@ -106,3 +121,26 @@ def rank_document(document: RetrievedDocumentSchema):
         is_untrusted,
         -content_length,
     )
+
+
+def extract_ddgs_metadata(result: dict):
+    return {
+        "title": result.get("title"),
+        "engine": result.get("engine"),
+        "category": result.get("category"),
+        "author": result.get("author"),
+        "categories": result.get("categories"),
+        "tags": result.get("tags"),
+        "published_at": result.get("date") or result.get("published") or result.get("publishedDate"),
+        "search_score": parse_search_score(result.get("score")),
+    }
+
+
+def parse_search_score(score):
+    if score is None:
+        return None
+
+    try:
+        return float(score)
+    except (TypeError, ValueError):
+        return None

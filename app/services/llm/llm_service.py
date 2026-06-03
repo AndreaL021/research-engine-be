@@ -3,7 +3,7 @@ from functools import lru_cache
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 
-from app.config.config import LLM_MODEL
+from app.config.config import LLM_CONTEXT_CHUNKS, LLM_MODEL, LLM_MAX_NEW_TOKEN
 
 
 @lru_cache(maxsize=1)
@@ -24,10 +24,12 @@ def generate_answer(query: str, documents):
 
     tokenizer, model = get_llm()
 
+    context_documents = documents[:LLM_CONTEXT_CHUNKS]
+
     context = "\n\n".join(
         [
             f"Source {index + 1}: {document.title}\nURL: {document.url}\nContent: {document.content}"
-            for index, document in enumerate(documents)
+            for index, document in enumerate(context_documents)
         ]
     )
 
@@ -55,7 +57,7 @@ Answer:
     with torch.no_grad():
         output = model.generate(
             **inputs,
-            max_new_tokens=300,
+            max_new_tokens=LLM_MAX_NEW_TOKEN,
             do_sample=False,
         )
 

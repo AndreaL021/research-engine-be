@@ -12,6 +12,9 @@ class DocumentSchema(BaseModel):
     source_reliability: int
     search_engine: str | None = None
     search_category: str | None = None
+    author: str | None = None
+    categories: str | None = None
+    tags: str | None = None
     published_at: str | None = None
     search_score: int | None = None
 
@@ -35,5 +38,8 @@ class RetrievedDocumentSchema(BaseModel):
     content: str
     engine: str | None = None
     category: str | None = None
+    author: str | None = None
+    categories: str | None = None
+    tags: str | None = None
     published_at: str | None = None
     search_score: float | None = None

@@ -31,6 +31,12 @@ class DocumentModel(Base):
 
     search_category = Column(String, nullable=True, index=True)
 
+    author = Column(String, nullable=True, index=True)
+
+    categories = Column(String, nullable=True, index=True)
+
+    tags = Column(String, nullable=True, index=True)
+
     published_at = Column(String, nullable=True, index=True)
 
     search_score = Column(Integer, nullable=True)
