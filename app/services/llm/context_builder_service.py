@@ -10,19 +10,18 @@ def build_answer_context(
     return "\n\n".join(
         [
             build_source_context(
-                source_number=index + 1,
                 document=document,
             )
-            for index, document in enumerate(context_documents)
+            for document in context_documents
         ]
     )
 
 
 def build_source_context(
-    source_number: int,
     document: DocumentSchema,
 ):
     metadata = build_source_metadata(document)
+    source_number = document.source_number or 1
 
     return f"""[Source {source_number}]
 Title: {document.title}
@@ -44,6 +43,7 @@ def build_source_metadata(
     ]
 
     optional_metadata = {
+        "Chunk": document.chunk_index,
         "Author": document.author,
         "Published": document.published_at,
         "Search engine": document.search_engine,

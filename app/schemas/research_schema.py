@@ -2,6 +2,8 @@ from pydantic import BaseModel
 
 # document
 class DocumentSchema(BaseModel):
+    source_number: int | None = None
+    chunk_index: int | None = None
     title: str
     url: str
     content: str

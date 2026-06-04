@@ -122,17 +122,20 @@ def retrieve_chunks(
 
     if tracker:
         with tracker.measure("reranker"):
-            return rerank_chunks(
+            reranked_documents = rerank_chunks(
                 query=query,
                 documents=documents,
                 limit=MAX_CHUNK_RESPONSE,
             )
+            return assign_source_numbers(reranked_documents)
 
-    return rerank_chunks(
+    reranked_documents = rerank_chunks(
         query=query,
         documents=documents,
         limit=MAX_CHUNK_RESPONSE,
     )
+
+    return assign_source_numbers(reranked_documents)
 
 
 # web
@@ -215,6 +218,7 @@ def retrieve_similar_chunks(
 
         documents.append(
             DocumentSchema(
+                chunk_index=chunk.chunk_index,
                 title=document.title,
                 url=document.url,
                 content=chunk.content,
@@ -274,6 +278,7 @@ def retrieve_lexical_chunks(
 
     documents = [
         DocumentSchema(
+            chunk_index=chunk.chunk_index,
             title=document.title,
             url=document.url,
             content=chunk.content,
@@ -355,6 +360,7 @@ def retrieve_keyword_chunks(
 
     return [
         DocumentSchema(
+            chunk_index=chunk.chunk_index,
             title=document.title,
             url=document.url,
             content=chunk.content,
@@ -433,6 +439,19 @@ def select_reranker_candidates(
             break
 
     return selected_documents
+
+
+def assign_source_numbers(
+    documents: list[DocumentSchema],
+):
+    return [
+        document.model_copy(
+            update={
+                "source_number": index + 1
+            }
+        )
+        for index, document in enumerate(documents)
+    ]
 
 
 def classify_source_type(

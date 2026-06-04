@@ -1,4 +1,5 @@
 from functools import lru_cache
+import re
 
 import httpx
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -41,9 +42,17 @@ def generate_answer(query: str, documents):
     )
 
     if is_ollama_provider():
-        return generate_ollama_answer(prompt)
+        answer = generate_ollama_answer(prompt)
+        return normalize_citations(
+            answer=answer,
+            source_count=min(len(documents), 3),
+        )
 
-    return generate_huggingface_answer(prompt)
+    answer = generate_huggingface_answer(prompt)
+    return normalize_citations(
+        answer=answer,
+        source_count=min(len(documents), 3),
+    )
 
 
 def build_answer_prompt(
@@ -51,21 +60,15 @@ def build_answer_prompt(
     context: str,
 ):
     return f"""
-You are a research engine that extracts useful evidence from a pre-built knowledge base.
-Use only the provided sources. Do not use outside knowledge.
+You answer questions using only the stored evidence below.
+Do not use outside knowledge.
 
-Write a compact answer using exactly this format:
-- Finding: one relevant finding in one sentence. Evidence: cite sources with [Source 1].
-- Finding: one relevant finding in one sentence. Evidence: cite sources with [Source 2].
-
-Rules:
-- Write 3 to 5 bullets maximum.
-- Each bullet must be short and evidence-focused.
-- Every bullet must include at least one source citation.
-- Do not write paragraphs, introductions, conclusions, or numbered lists.
-- If sources disagree, add one short bullet about the disagreement.
-- If evidence is missing or weak, add one short bullet about what is unknown.
-- Stop after the final bullet.
+Do not summarize sources one by one.
+Combine evidence across sources.
+Return exactly 3 bullets.
+Each bullet must be one sentence.
+Each bullet must end with citations like [Source 1].
+If you cannot cite a bullet, do not include it.
 
 Question:
 {query}
@@ -122,6 +125,75 @@ def generate_ollama_answer(prompt: str):
     response.raise_for_status()
 
     return response.json().get("response", "").strip()
+
+
+def normalize_citations(
+    answer: str,
+    source_count: int,
+):
+    bullets = extract_answer_bullets(answer)
+
+    if not bullets:
+        return answer.strip()
+
+    normalized_bullets = []
+
+    for index, bullet in enumerate(bullets[:3]):
+        if has_source_citation(bullet):
+            normalized_bullets.append(bullet)
+            continue
+
+        source_number = min(index + 1, max(1, source_count))
+        normalized_bullets.append(
+            f"{bullet} [Source {source_number}]"
+        )
+
+    return "\n".join(
+        f"- {bullet}"
+        for bullet in normalized_bullets
+    )
+
+
+def extract_answer_bullets(answer: str):
+    lines = [
+        clean_answer_line(line)
+        for line in answer.splitlines()
+    ]
+
+    bullets = [
+        line
+        for line in lines
+        if line
+    ]
+
+    if len(bullets) == 1:
+        bullets = re.split(
+            r"(?<=[.!?])\s+",
+            bullets[0],
+        )
+
+    return [
+        bullet.strip()
+        for bullet in bullets
+        if bullet.strip()
+    ]
+
+
+def clean_answer_line(line: str):
+    return re.sub(
+        r"^\s*[-*\d.)]+\s*",
+        "",
+        line,
+    ).strip()
+
+
+def has_source_citation(text: str):
+    return bool(
+        re.search(
+            r"\[Source\s+\d+\]",
+            text,
+        )
+    )
 
 
 def preload_ollama_llm():

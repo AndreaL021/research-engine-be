@@ -29,6 +29,9 @@ from app.services.persistance.embedding_service import (
 from app.services.persistance.entity_service import (
     create_chunk_entities,
 )
+from app.services.persistance.claim_service import (
+    create_claims,
+)
 # services retrieval
 from app.services.retrieval.retrieval_service import (
     classify_source_type,
@@ -240,6 +243,18 @@ async def retrieve_documents(query: str, provider: str, retrieval_mode: str):
                 db=db,
                 chunks=chunk_models
             ) 
+
+        # Claims are structured evidence units extracted from stored chunks.
+        with tracker.measure("claim_extraction"):
+            claim_models = create_claims(
+                db=db,
+                chunks=chunk_models,
+            )
+        tracker.log(
+            {
+                "claims_created": len(claim_models),
+            }
+        )
 
         # Entities are extracted after chunks are flushed so relations can use
         # generated chunk ids.
