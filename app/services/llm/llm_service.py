@@ -9,6 +9,9 @@ from app.config.config import (
     LLM_MODEL,
     LLM_MAX_NEW_TOKEN,
     LLM_PROVIDER,
+    MIN_ANSWER_DOCUMENTS,
+    MIN_AVERAGE_ANSWER_SCORE,
+    MIN_AVERAGE_SOURCE_RELIABILITY,
     OLLAMA_MODEL,
     OLLAMA_URL,
 )
@@ -32,13 +35,16 @@ def preload_llm():
 
 
 def generate_answer(query: str, documents):
-    if not documents:
-        return "I could not find enough evidence in the retrieved sources to answer the question."
+    evidence_status = evaluate_evidence_status(documents)
+
+    if evidence_status == "insufficient":
+        return build_insufficient_evidence_answer(documents)
 
     context = build_answer_context(documents)
     prompt = build_answer_prompt(
         query=query,
         context=context,
+        evidence_status=evidence_status,
     )
 
     if is_ollama_provider():
@@ -58,10 +64,14 @@ def generate_answer(query: str, documents):
 def build_answer_prompt(
     query: str,
     context: str,
+    evidence_status: str,
 ):
+    evidence_instruction = build_evidence_instruction(evidence_status)
+
     return f"""
 You answer questions using only the stored evidence below.
 Do not use outside knowledge.
+{evidence_instruction}
 
 Do not summarize sources one by one.
 Combine evidence across sources.
@@ -78,6 +88,39 @@ Sources:
 
 Answer:
 """
+
+
+def evaluate_evidence_status(documents):
+    if not documents:
+        return "insufficient"
+
+    if len(documents) < MIN_ANSWER_DOCUMENTS:
+        return "limited"
+
+    average_score = sum(document.score for document in documents) / len(documents)
+    average_reliability = sum(document.source_reliability for document in documents) / len(documents)
+
+    if average_score < MIN_AVERAGE_ANSWER_SCORE:
+        return "insufficient"
+
+    if average_reliability < MIN_AVERAGE_SOURCE_RELIABILITY:
+        return "limited"
+
+    return "sufficient"
+
+
+def build_evidence_instruction(evidence_status: str):
+    if evidence_status == "limited":
+        return "The available evidence is limited. Start the answer with: \"The available evidence is limited.\""
+
+    return "The available evidence is sufficient for a concise grounded answer."
+
+
+def build_insufficient_evidence_answer(documents):
+    if not documents:
+        return "The retrieved evidence is insufficient to answer confidently. No relevant stored sources were found."
+
+    return "The retrieved evidence is insufficient to answer confidently. The available sources are too weak or not relevant enough."
 
 
 def generate_huggingface_answer(prompt: str):

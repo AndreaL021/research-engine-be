@@ -41,7 +41,7 @@ from app.services.retrieval.retrieval_service import (
     retrieve_web_documents,
     retrieve_chunks,
 )
-from app.services.llm.llm_service import generate_answer
+from app.services.llm.llm_service import evaluate_evidence_status, generate_answer
 # other
 from urllib.parse import urlparse
 from app.config.config import (MAX_CACHED_DOCUMENTS)
@@ -336,6 +336,7 @@ def create_research_result(
     tracker.log(
         {
             "result_documents": len(documents),
+            "evidence_status": evaluate_evidence_status(documents),
         }
     )
 
