@@ -1,12 +1,8 @@
-from functools import lru_cache
 import re
 
 import httpx
-from transformers import AutoModelForCausalLM, AutoTokenizer
-import torch
 
 from app.config.llm_config import (
-    LLM_INPUT_MAX_LENGTH,
     LLM_MAX_NEW_TOKEN,
     LLM_TEMPERATURE,
     LLM_TIMEOUT_SECONDS,
@@ -17,28 +13,14 @@ from app.config.llm_config import (
     OLLAMA_PRELOAD_TOKENS,
 )
 from app.config.model_config import (
-    LLM_MODEL,
-    LLM_PROVIDER,
     OLLAMA_MODEL,
     OLLAMA_URL,
 )
 from app.services.llm.context_builder_service import build_answer_context
 
 
-@lru_cache(maxsize=1)
-def get_huggingface_llm():
-    tokenizer = AutoTokenizer.from_pretrained(LLM_MODEL)
-    model = AutoModelForCausalLM.from_pretrained(LLM_MODEL)
-    model.eval()
-    return tokenizer, model
-
-
 def preload_llm():
-    if is_ollama_provider():
-        preload_ollama_llm()
-        return
-
-    get_huggingface_llm()
+    preload_ollama_llm()
 
 
 def generate_answer(query: str, documents):
@@ -54,14 +36,7 @@ def generate_answer(query: str, documents):
         evidence_status=evidence_status,
     )
 
-    if is_ollama_provider():
-        answer = generate_ollama_answer(prompt)
-        return normalize_citations(
-            answer=answer,
-            source_count=min(len(documents), 3),
-        )
-
-    answer = generate_huggingface_answer(prompt)
+    answer = generate_ollama_answer(prompt)
     return normalize_citations(
         answer=answer,
         source_count=min(len(documents), 3),
@@ -128,34 +103,6 @@ def build_insufficient_evidence_answer(documents):
         return "The retrieved evidence is insufficient to answer confidently. No relevant stored sources were found."
 
     return "The retrieved evidence is insufficient to answer confidently. The available sources are too weak or not relevant enough."
-
-
-def generate_huggingface_answer(prompt: str):
-    tokenizer, model = get_huggingface_llm()
-
-    inputs = tokenizer(
-        prompt,
-        return_tensors="pt",
-        truncation=True,
-        max_length=LLM_INPUT_MAX_LENGTH,
-    )
-
-    with torch.no_grad():
-        output = model.generate(
-            **inputs,
-            max_new_tokens=LLM_MAX_NEW_TOKEN,
-            do_sample=False,
-        )
-
-    generated_text = tokenizer.decode(
-        output[0],
-        skip_special_tokens=True,
-    )
-
-    if "Answer:" in generated_text:
-        return generated_text.split("Answer:", 1)[1].strip()
-
-    return generated_text.strip()
 
 
 def generate_ollama_answer(prompt: str):
@@ -266,21 +213,15 @@ def preload_ollama_llm():
     response.raise_for_status()
 
 
-def is_ollama_provider():
-    return LLM_PROVIDER.lower() == "ollama"
-
-
 def get_ollama_url():
     if not OLLAMA_URL:
-        raise ValueError("OLLAMA_URL is required when LLM_PROVIDER=ollama")
+        raise ValueError("OLLAMA_URL is required")
 
     return OLLAMA_URL.rstrip("/")
 
 
 def get_ollama_model():
-    model = OLLAMA_MODEL or LLM_MODEL
+    if not OLLAMA_MODEL:
+        raise ValueError("OLLAMA_MODEL is required")
 
-    if not model:
-        raise ValueError("OLLAMA_MODEL or LLM_MODEL is required when LLM_PROVIDER=ollama")
-
-    return model
+    return OLLAMA_MODEL

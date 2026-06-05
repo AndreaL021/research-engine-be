@@ -1,11 +1,11 @@
-import re
-from collections import Counter
-
 from sqlalchemy.orm import Session
 
-from app.config.knowledge_config import ENTITY_STOPWORDS, MAX_ENTITIES_PER_CHUNK
+from app.database.database import SessionLocal
+from app.models.chunk_model import ChunkModel
 from app.models.chunk_entity_model import ChunkEntityModel
 from app.models.entity_model import EntityModel
+from app.services.ingestion.entity_extraction_service import extract_entities
+from app.services.utils.tracking_service import PipelineTracker
 
 
 def create_chunk_entities(
@@ -13,9 +13,10 @@ def create_chunk_entities(
     chunks,
 ):
     for chunk in chunks:
-        entity_names = extract_entities(
-            chunk.content
-        )
+        try:
+            entity_names = extract_entities(chunk.content)
+        except Exception:
+            continue
 
         for entity_name in entity_names:
             entity = get_or_create_entity(
@@ -28,28 +29,6 @@ def create_chunk_entities(
                 id_chunk=chunk.id,
                 id_entity=entity.id,
             )
-
-
-def extract_entities(content: str):
-    tokens = [
-        token
-        for token in re.findall(r"\b[a-zA-Z][a-zA-Z0-9-]{3,}\b", content.lower())
-        if token not in ENTITY_STOPWORDS
-    ]
-
-    bigrams = [
-        f"{tokens[index]} {tokens[index + 1]}"
-        for index in range(len(tokens) - 1)
-    ]
-
-    candidates = tokens + bigrams
-
-    counts = Counter(candidates)
-
-    return [
-        entity
-        for entity, _ in counts.most_common(MAX_ENTITIES_PER_CHUNK)
-    ]
 
 
 def get_or_create_entity(
@@ -95,3 +74,41 @@ def create_chunk_entity_relation(
     db.flush()
 
     return relation
+
+
+def create_entities_for_chunk_ids(
+    chunk_ids: list[int],
+    provider: str,
+    retrieval_mode: str,
+):
+    db: Session = SessionLocal()
+    tracker = PipelineTracker(
+        provider=f"{provider}-entities",
+        retrieval_mode=retrieval_mode,
+    )
+
+    try:
+        chunks = (
+            db.query(ChunkModel)
+            .filter(ChunkModel.id.in_(chunk_ids))
+            .all()
+        )
+
+        with tracker.measure("entity_extraction"):
+            create_chunk_entities(
+                db=db,
+                chunks=chunks,
+            )
+
+        db.commit()
+    except Exception as error:
+        db.rollback()
+        tracker.log(
+            {
+                "failed": 1,
+                "error_type": type(error).__name__,
+            }
+        )
+    finally:
+        tracker.finish()
+        db.close()

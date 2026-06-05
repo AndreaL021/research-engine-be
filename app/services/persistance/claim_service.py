@@ -1,14 +1,10 @@
-import re
-
 from sqlalchemy.orm import Session
 
-from app.config.knowledge_config import (
-    CLAIM_SIGNAL_WORDS,
-    MAX_CLAIMS_PER_CHUNK,
-    MAX_CLAIM_WORDS,
-    MIN_CLAIM_WORDS,
-)
+from app.database.database import SessionLocal
+from app.models.chunk_model import ChunkModel
 from app.models.claim_model import ClaimModel
+from app.services.ingestion.claim_extraction_service import extract_claims
+from app.services.utils.tracking_service import PipelineTracker
 
 
 def create_claims(
@@ -18,20 +14,21 @@ def create_claims(
     claim_models = []
 
     for chunk in chunks:
-        claims = extract_claims(
-            chunk.content
-        )
+        try:
+            claims = extract_claims(chunk.content)
+        except Exception:
+            continue
 
         claim_models.extend(
             [
                 ClaimModel(
                     id_document=chunk.id_document,
                     id_chunk=chunk.id,
-                    claim_text=claim_text,
-                    claim_type=classify_claim_type(claim_text),
-                    confidence=calculate_claim_confidence(claim_text),
+                    claim_text=claim["claim_text"],
+                    claim_type=claim["claim_type"],
+                    confidence=claim["confidence"],
                 )
-                for claim_text in claims
+                for claim in claims
             ]
         )
 
@@ -44,91 +41,39 @@ def create_claims(
     return claim_models
 
 
-def extract_claims(content: str):
-    sentences = split_sentences(content)
-    claims = []
-    seen_claims = set()
-
-    for sentence in sentences:
-        claim = clean_claim(sentence)
-
-        if not is_valid_claim(claim):
-            continue
-
-        normalized_claim = claim.lower()
-
-        if normalized_claim in seen_claims:
-            continue
-
-        seen_claims.add(normalized_claim)
-        claims.append(claim)
-
-        if len(claims) >= MAX_CLAIMS_PER_CHUNK:
-            break
-
-    return claims
-
-
-def split_sentences(content: str):
-    return re.split(
-        r"(?<=[.!?])\s+",
-        content,
+def create_claims_for_chunk_ids(
+    chunk_ids: list[int],
+    provider: str,
+    retrieval_mode: str,
+):
+    db: Session = SessionLocal()
+    tracker = PipelineTracker(
+        provider=f"{provider}-claims",
+        retrieval_mode=retrieval_mode,
     )
 
+    try:
+        chunks = (
+            db.query(ChunkModel)
+            .filter(ChunkModel.id.in_(chunk_ids))
+            .all()
+        )
 
-def clean_claim(sentence: str):
-    claim = re.sub(
-        r"\s+",
-        " ",
-        sentence,
-    ).strip()
+        with tracker.measure("claim_extraction"):
+            create_claims(
+                db=db,
+                chunks=chunks,
+            )
 
-    return claim.strip("-:; ")
-
-
-def is_valid_claim(claim: str):
-    words = claim.split()
-
-    if len(words) < MIN_CLAIM_WORDS or len(words) > MAX_CLAIM_WORDS:
-        return False
-
-    if claim.endswith("?"):
-        return False
-
-    lowered_claim = claim.lower()
-
-    return any(
-        signal_word in lowered_claim
-        for signal_word in CLAIM_SIGNAL_WORDS
-    )
-
-
-def classify_claim_type(claim: str):
-    lowered_claim = claim.lower()
-
-    if any(word in lowered_claim for word in {"however", "but", "although", "whereas"}):
-        return "contrast"
-
-    if any(word in lowered_claim for word in {"unknown", "unclear", "insufficient", "limited"}):
-        return "uncertainty"
-
-    return "evidence"
-
-
-def calculate_claim_confidence(claim: str):
-    confidence = 55
-    lowered_claim = claim.lower()
-
-    if any(word in lowered_claim for word in {"show", "indicate", "suggest"}):
-        confidence += 10
-
-    if any(word in lowered_claim for word in {"may", "could", "might"}):
-        confidence -= 10
-
-    if classify_claim_type(claim) == "uncertainty":
-        confidence -= 15
-
-    return max(
-        20,
-        min(90, confidence),
-    )
+        db.commit()
+    except Exception as error:
+        db.rollback()
+        tracker.log(
+            {
+                "failed": 1,
+                "error_type": type(error).__name__,
+            }
+        )
+    finally:
+        tracker.finish()
+        db.close()

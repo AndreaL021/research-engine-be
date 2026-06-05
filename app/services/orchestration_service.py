@@ -26,10 +26,10 @@ from app.services.persistance.embedding_service import (
     create_embeddings
 )
 from app.services.persistance.entity_service import (
-    create_chunk_entities,
+    create_entities_for_chunk_ids,
 )
 from app.services.persistance.claim_service import (
-    create_claims,
+    create_claims_for_chunk_ids,
 )
 # services retrieval
 from app.services.retrieval.retrieval_service import (
@@ -39,11 +39,16 @@ from app.services.retrieval.retrieval_service import (
 from app.services.llm.llm_service import generate_answer
 # other
 from app.config.retrieval_config import MAX_CACHED_DOCUMENTS
-from fastapi import HTTPException
+from fastapi import BackgroundTasks, HTTPException
 from app.services.utils.tracking_service import PipelineTracker
 
 
-async def retrieve_documents(query: str, provider: str, retrieval_mode: str):
+async def retrieve_documents(
+    query: str,
+    provider: str,
+    retrieval_mode: str,
+    background_tasks: BackgroundTasks | None = None,
+):
 
     # create database session
     db: Session = SessionLocal()
@@ -63,13 +68,12 @@ async def retrieve_documents(query: str, provider: str, retrieval_mode: str):
         # Once the query has enough linked sources, avoid repeated web calls that
         # usually return duplicates and go directly to local retrieval.
         if cached_count >= MAX_CACHED_DOCUMENTS:
-            with tracker.measure("local_retrieval"):
-                response = retrieve_chunks(
-                    db=db,
-                    query=query,
-                    retrieval_mode=retrieval_mode,
-                    tracker=tracker,
-                )
+            response = retrieve_chunks(
+                db=db,
+                query=query,
+                retrieval_mode=retrieval_mode,
+                tracker=tracker,
+            )
             return create_research_result(
                 query=query,
                 documents=response,
@@ -82,53 +86,50 @@ async def retrieve_documents(query: str, provider: str, retrieval_mode: str):
         )
 
         # retrieve fresh documents from selected provider
-        with tracker.measure("web_retrieval"):
-            documents = await retrieve_web_documents(
-                query = query,
-                cached_length = cached_count,
-                provider = provider
+        documents = await retrieve_web_documents(
+            query = query,
+            cached_length = cached_count,
+            provider = provider
+        )
+
+        for document in documents:
+
+            existing_document = get_document_by_url(
+                db = db,
+                url = document.url
             )
 
-        with tracker.measure("document_processing"):
-            for document in documents:
-
-                existing_document = get_document_by_url(
-                    db = db,
-                    url = document.url
-                )
-
-                if existing_document:
-                    ensure_query_document_relation(
-                        db=db,
-                        id_query=query_model.id,
-                        id_document=existing_document.id,
-                    )
-                    continue
-
-                document_model, new_chunks = create_document_with_chunks(
-                    db=db,
-                    document=document,
-                    provider=provider,
-                )
-
-                chunk_models.extend(new_chunks)
+            if existing_document:
                 ensure_query_document_relation(
                     db=db,
                     id_query=query_model.id,
-                    id_document=document_model.id,
+                    id_document=existing_document.id,
                 )
+                continue
+
+            document_model, new_chunks = create_document_with_chunks(
+                db=db,
+                document=document,
+                provider=provider,
+            )
+
+            chunk_models.extend(new_chunks)
+            ensure_query_document_relation(
+                db=db,
+                id_query=query_model.id,
+                id_document=document_model.id,
+            )
                     
         # If the provider only returned duplicates, reuse the existing knowledge
         # base instead of failing the request.
         if not chunk_models:
             db.commit()
-            with tracker.measure("local_retrieval"):
-                response = retrieve_chunks(
-                    db=db,
-                    query=query,
-                    retrieval_mode=retrieval_mode,
-                    tracker=tracker,
-                )
+            response = retrieve_chunks(
+                db=db,
+                query=query,
+                retrieval_mode=retrieval_mode,
+                tracker=tracker,
+            )
             return create_research_result(
                 query=query,
                 documents=response,
@@ -140,27 +141,13 @@ async def retrieve_documents(query: str, provider: str, retrieval_mode: str):
             chunks=chunk_models
         ) 
 
-        # Claims are structured evidence units extracted from stored chunks.
-        create_claims(
-            db=db,
-            chunks=chunk_models,
-        )
-
-        # Entities are extracted after chunks are flushed so relations can use
-        # generated chunk ids.
-        create_chunk_entities(
-            db=db,
-            chunks=chunk_models,
-        )
-
         # generate embeddings for all new chunks
-        with tracker.measure("embedding_generation"):
-            vectors = generate_embeddings(
-                [
-                    chunk_model.content
-                    for chunk_model in chunk_models
-                ]
-            )        
+        vectors = generate_embeddings(
+            [
+                chunk_model.content
+                for chunk_model in chunk_models
+            ]
+        )        
         
         embedding_models = [
             EmbeddingModel(
@@ -178,14 +165,33 @@ async def retrieve_documents(query: str, provider: str, retrieval_mode: str):
         # commit transaction
         db.commit()
 
+        schedule_claim_extraction(
+            background_tasks=background_tasks,
+            chunk_ids=[
+                chunk_model.id
+                for chunk_model in chunk_models
+            ],
+            provider=provider,
+            retrieval_mode=retrieval_mode,
+        )
+
+        schedule_entity_extraction(
+            background_tasks=background_tasks,
+            chunk_ids=[
+                chunk_model.id
+                for chunk_model in chunk_models
+            ],
+            provider=provider,
+            retrieval_mode=retrieval_mode,
+        )
+
         # perform semantic retrieval on the updated KB
-        with tracker.measure("local_retrieval"):
-            response = retrieve_chunks(
-                db=db,
-                query=query,
-                retrieval_mode=retrieval_mode,
-                tracker=tracker,
-            )
+        response = retrieve_chunks(
+            db=db,
+            query=query,
+            retrieval_mode=retrieval_mode,
+            tracker=tracker,
+        )
 
     except Exception as error:
 
@@ -212,6 +218,56 @@ async def retrieve_documents(query: str, provider: str, retrieval_mode: str):
         query=query,
         documents=response,
         tracker=tracker,
+    )
+
+
+def schedule_claim_extraction(
+    background_tasks: BackgroundTasks | None,
+    chunk_ids: list[int],
+    provider: str,
+    retrieval_mode: str,
+):
+    if not chunk_ids:
+        return
+
+    if background_tasks:
+        background_tasks.add_task(
+            create_claims_for_chunk_ids,
+            chunk_ids,
+            provider,
+            retrieval_mode,
+        )
+        return
+
+    create_claims_for_chunk_ids(
+        chunk_ids=chunk_ids,
+        provider=provider,
+        retrieval_mode=retrieval_mode,
+    )
+
+
+def schedule_entity_extraction(
+    background_tasks: BackgroundTasks | None,
+    chunk_ids: list[int],
+    provider: str,
+    retrieval_mode: str,
+):
+    if not chunk_ids:
+        return
+
+    if background_tasks:
+        background_tasks.add_task(
+            create_entities_for_chunk_ids,
+            chunk_ids,
+            provider,
+            retrieval_mode,
+        )
+        return
+
+    create_entities_for_chunk_ids(
+        chunk_ids=chunk_ids,
+        provider=provider,
+        retrieval_mode=retrieval_mode,
     )
 
 

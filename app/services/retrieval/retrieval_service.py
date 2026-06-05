@@ -31,23 +31,10 @@ def retrieve_chunks(
     retrieval_mode: str,
     tracker: PipelineTracker | None = None,
 ):
-    documents = retrieve_initial_candidates(
+    documents = prepare_reranker_candidates(
         db=db,
         query=query,
         retrieval_mode=retrieval_mode,
-    )
-
-    boosted_documents = apply_metadata_boost(documents)
-
-    sorted_documents = sorted(
-        boosted_documents,
-        key=lambda document: document.score,
-        reverse=True,
-    )
-
-    documents = select_reranker_candidates(
-        sorted_documents,
-        limit=RERANKER_CANDIDATES,
     )
 
     if tracker:
@@ -65,6 +52,31 @@ def retrieve_chunks(
         )
 
     return assign_source_numbers(reranked_documents)
+
+
+def prepare_reranker_candidates(
+    db: Session,
+    query: str,
+    retrieval_mode: str,
+):
+    documents = retrieve_initial_candidates(
+        db=db,
+        query=query,
+        retrieval_mode=retrieval_mode,
+    )
+
+    boosted_documents = apply_metadata_boost(documents)
+
+    sorted_documents = sorted(
+        boosted_documents,
+        key=lambda document: document.score,
+        reverse=True,
+    )
+
+    return select_reranker_candidates(
+        sorted_documents,
+        limit=RERANKER_CANDIDATES,
+    )
 
 
 async def retrieve_web_documents(
@@ -107,4 +119,3 @@ def retrieve_initial_candidates(
         query=query,
         limit=MAX_CHUNK_RESPONSE,
     )
-

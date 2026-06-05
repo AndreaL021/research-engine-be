@@ -3,7 +3,6 @@ from time import perf_counter
 
 import trackio
 
-from app.config.model_config import LLM_PROVIDER
 from app.config.tracking_config import TRACKING_ENABLED, TRACKIO_PROJECT
 
 
@@ -25,7 +24,6 @@ class PipelineTracker:
                 config={
                     "provider": provider,
                     "retrieval_mode": retrieval_mode,
-                    "llm_provider": LLM_PROVIDER,
                 },
             )
 
@@ -36,7 +34,9 @@ class PipelineTracker:
         try:
             yield
         finally:
-            self.metrics[f"{name}_seconds"] = perf_counter() - started_at
+            metric_name = f"{name}_seconds"
+            elapsed_seconds = perf_counter() - started_at
+            self.metrics[metric_name] = self.metrics.get(metric_name, 0) + elapsed_seconds
 
     def log(
         self,

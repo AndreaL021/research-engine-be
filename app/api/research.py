@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, BackgroundTasks
 
 from app.services.orchestration_service import retrieve_documents
 
@@ -12,12 +12,16 @@ router = APIRouter()
 
 @router.post("/research", response_model=ResearchResponseSchema)
 
-async def research(payload: ResearchRequestSchema):
+async def research(
+    payload: ResearchRequestSchema,
+    background_tasks: BackgroundTasks,
+):
 
     result = await retrieve_documents(
         payload.query, 
         payload.provider, 
-        payload.retrieval_mode
+        payload.retrieval_mode,
+        background_tasks,
     )
 
     return {
