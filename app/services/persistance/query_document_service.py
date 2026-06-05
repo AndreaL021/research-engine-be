@@ -32,3 +32,24 @@ def get_relation(
         QueryDocumentModel.id_query == id_query,
         QueryDocumentModel.id_document == id_document,
     ).first()
+
+
+def ensure_query_document_relation(
+    db: Session,
+    id_query: int,
+    id_document: int,
+):
+    existing_relation = get_relation(
+        db=db,
+        id_query=id_query,
+        id_document=id_document,
+    )
+
+    if existing_relation:
+        return existing_relation
+
+    return create_relation(
+        db=db,
+        id_query=id_query,
+        id_document=id_document,
+    )

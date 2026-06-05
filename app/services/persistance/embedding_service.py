@@ -3,7 +3,7 @@ from functools import lru_cache
 from sentence_transformers import SentenceTransformer
 from sqlalchemy.orm import Session
 
-from app.config.config import EMBEDDING_MODEL
+from app.config.model_config import EMBEDDING_MODEL
 from app.models.embedding_model import (
     EmbeddingModel
 )

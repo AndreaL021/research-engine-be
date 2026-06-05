@@ -2,7 +2,7 @@ from sqlalchemy.orm import Session
 
 from app.models.chunk_model import ChunkModel
 
-from app.config.config import (
+from app.config.knowledge_config import (
     CHUNK_SIZE,
     CHUNK_OVERLAP,
 )

@@ -1,4 +1,4 @@
-from app.config.config import (
+from app.config.retrieval_config import (
     BLOCKED_DOMAINS,
     MAX_CACHED_DOCUMENTS,
     MAX_RESULTS,

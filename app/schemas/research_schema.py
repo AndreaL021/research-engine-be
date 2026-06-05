@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 
-# document
-class DocumentSchema(BaseModel):
+# retrieved chunk
+class RetrievedChunkSchema(BaseModel):
     source_number: int | None = None
     chunk_index: int | None = None
     title: str
@@ -23,7 +23,7 @@ class DocumentSchema(BaseModel):
 # response
 class ResearchResponseSchema(BaseModel):
     query: str
-    documents: list[DocumentSchema]
+    documents: list[RetrievedChunkSchema]
     provider: str
     retrieval_mode: str
     answer: str | None = None

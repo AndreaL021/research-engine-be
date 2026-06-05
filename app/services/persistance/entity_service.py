@@ -3,40 +3,9 @@ from collections import Counter
 
 from sqlalchemy.orm import Session
 
+from app.config.knowledge_config import ENTITY_STOPWORDS, MAX_ENTITIES_PER_CHUNK
 from app.models.chunk_entity_model import ChunkEntityModel
 from app.models.entity_model import EntityModel
-
-
-MAX_ENTITIES_PER_CHUNK = 8
-
-STOPWORDS = {
-    "about",
-    "after",
-    "also",
-    "because",
-    "between",
-    "could",
-    "from",
-    "have",
-    "into",
-    "more",
-    "over",
-    "that",
-    "their",
-    "there",
-    "these",
-    "they",
-    "this",
-    "those",
-    "through",
-    "what",
-    "when",
-    "where",
-    "which",
-    "while",
-    "with",
-    "would",
-}
 
 
 def create_chunk_entities(
@@ -65,7 +34,7 @@ def extract_entities(content: str):
     tokens = [
         token
         for token in re.findall(r"\b[a-zA-Z][a-zA-Z0-9-]{3,}\b", content.lower())
-        if token not in STOPWORDS
+        if token not in ENTITY_STOPWORDS
     ]
 
     bigrams = [

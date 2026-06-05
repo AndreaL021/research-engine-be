@@ -1,25 +1,20 @@
 from contextlib import contextmanager
-from hashlib import sha256
 from time import perf_counter
 
-from app.config.config import LLM_PROVIDER, TRACKIO_PROJECT
+import trackio
 
-
-try:
-    import trackio
-except ImportError:
-    trackio = None
+from app.config.model_config import LLM_PROVIDER
+from app.config.tracking_config import TRACKING_ENABLED, TRACKIO_PROJECT
 
 
 class PipelineTracker:
     def __init__(
         self,
-        query: str,
         provider: str,
         retrieval_mode: str,
     ):
         self.metrics = {}
-        self.enabled = trackio is not None
+        self.enabled = TRACKING_ENABLED
         self.started_at = perf_counter()
 
         if self.enabled:
@@ -28,8 +23,6 @@ class PipelineTracker:
                 name=f"{provider}-{retrieval_mode}",
                 group="research-request",
                 config={
-                    "query_hash": hash_query(query),
-                    "query_length": len(query),
                     "provider": provider,
                     "retrieval_mode": retrieval_mode,
                     "llm_provider": LLM_PROVIDER,
@@ -59,9 +52,3 @@ class PipelineTracker:
 
         trackio.log(self.metrics)
         trackio.finish()
-
-
-def hash_query(query: str):
-    return sha256(
-        query.encode("utf-8")
-    ).hexdigest()[:12]

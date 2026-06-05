@@ -1,9 +1,9 @@
-from app.config.config import LLM_CONTEXT_CHUNKS
-from app.schemas.research_schema import DocumentSchema
+from app.config.llm_config import LLM_CONTEXT_CHUNKS
+from app.schemas.research_schema import RetrievedChunkSchema
 
 
 def build_answer_context(
-    documents: list[DocumentSchema],
+    documents: list[RetrievedChunkSchema],
 ):
     context_documents = documents[:LLM_CONTEXT_CHUNKS]
 
@@ -18,7 +18,7 @@ def build_answer_context(
 
 
 def build_source_context(
-    document: DocumentSchema,
+    document: RetrievedChunkSchema,
 ):
     metadata = build_source_metadata(document)
     source_number = document.source_number or 1
@@ -32,7 +32,7 @@ Content:
 
 
 def build_source_metadata(
-    document: DocumentSchema,
+    document: RetrievedChunkSchema,
 ):
     metadata = [
         f"Provider: {document.provider}",

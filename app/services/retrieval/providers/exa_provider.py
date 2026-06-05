@@ -1,9 +1,9 @@
 import httpx
 
-from app.config.config import (EXA_API_KEY, MAX_CACHED_DOCUMENTS)
+from app.config.retrieval_config import EXA_API_KEY, MAX_CACHED_DOCUMENTS
 
 from app.schemas.research_schema import RetrievedDocumentSchema
-from app.services.retrieval.retrieval_utils import (
+from app.services.retrieval.local.retrieval_utils import (
     clean_content,
     is_blocked_domain
 )

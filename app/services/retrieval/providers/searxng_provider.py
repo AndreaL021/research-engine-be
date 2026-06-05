@@ -2,22 +2,22 @@ import httpx
 import trafilatura
 from urllib.parse import urlparse
 
-from app.config.config import (
+from app.config.retrieval_config import (
     MAX_CACHED_DOCUMENTS,
+    MAX_TRAFILATURA_DOWNLOADS,
     MIN_CONTENT_WORDS,
+    SEARXNG_CATEGORY,
+    SEARXNG_TIMEOUT_SECONDS,
     SEARXNG_URL,
     TRUSTED_DOMAINS,
 )
 from app.schemas.research_schema import RetrievedDocumentSchema
-from app.services.retrieval.retrieval_utils import (
+from app.services.retrieval.local.retrieval_utils import (
     clean_content,
     extract_trafilatura_metadata,
     get_results_to_fetch,
     is_blocked_domain,
 )
-
-
-MAX_TRAFILATURA_DOWNLOADS = 5
 
 
 async def retrieve_web_documents(
@@ -31,13 +31,13 @@ async def retrieve_web_documents(
     )
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=SEARXNG_TIMEOUT_SECONDS) as client:
             response = await client.get(
                 f"{SEARXNG_URL.rstrip('/')}/search",
                 params={
                     "q": query,
                     "format": "json",
-                    "categories": "general",
+                    "categories": SEARXNG_CATEGORY,
                 },
             )
             response.raise_for_status()

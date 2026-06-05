@@ -1,124 +1,54 @@
-from app.services.retrieval.providers.ddgs_provider import (
-    retrieve_web_documents as retrieve_ddgs_documents
-)
-
-from app.services.retrieval.providers.searxng_provider import (
-    retrieve_web_documents as retrieve_searxng_documents
-)
-
-from app.services.retrieval.providers.exa_provider import (
-    retrieve_web_documents as retrieve_exa_documents
-)
-
-from app.services.retrieval.providers.tavily_provider import (
-    retrieve_web_documents as retrieve_tavily_documents
-)
-from app.services.persistance.embedding_service import generate_embeddings
 from sqlalchemy.orm import Session
-from app.models.embedding_model import EmbeddingModel
-from app.models.chunk_model import ChunkModel
-from app.models.document_model import DocumentModel
-from app.config.config import (
-    MAX_CHUNK_RESPONSE,
-    MIN_LEXICAL_SCORE,
-    MIN_SEMANTIC_SCORE,
-    RERANKER_CANDIDATES,
+
+from app.config.retrieval_config import MAX_CHUNK_RESPONSE, RERANKER_CANDIDATES
+from app.services.retrieval.local.candidate_service import (
+    assign_source_numbers,
+    select_reranker_candidates,
 )
-from app.schemas.research_schema import DocumentSchema
-from app.services.retrieval.scoring_service import (
+from app.services.retrieval.local.chunk_retrieval_service import (
+    retrieve_lexical_chunks,
+    retrieve_similar_chunks,
+)
+from app.services.retrieval.providers.ddgs_provider import (
+    retrieve_web_documents as retrieve_ddgs_documents,
+)
+from app.services.retrieval.providers.exa_provider import (
+    retrieve_web_documents as retrieve_exa_documents,
+)
+from app.services.retrieval.providers.searxng_provider import (
+    retrieve_web_documents as retrieve_searxng_documents,
+)
+from app.services.retrieval.local.scoring_service import (
     apply_metadata_boost,
     rerank_chunks,
 )
-from app.services.tracking_service import PipelineTracker
-from sqlalchemy import case, desc, func, or_
-from urllib.parse import urlparse
-from datetime import date
-import re
+from app.services.utils.tracking_service import PipelineTracker
 
 
-# development
 def retrieve_chunks(
     db: Session,
     query: str,
     retrieval_mode: str,
     tracker: PipelineTracker | None = None,
 ):
-    if retrieval_mode == "lexical":
-        if tracker:
-            with tracker.measure("lexical_chunk_search"):
-                documents = retrieve_lexical_chunks(
-                    db=db,
-                    query=query,
-                    limit=MAX_CHUNK_RESPONSE,
-                )
-        else:
-            documents = retrieve_lexical_chunks(
-                db=db,
-                query=query,
-                limit=MAX_CHUNK_RESPONSE,
-            )
-    else:
-        if tracker:
-            with tracker.measure("semantic_chunk_search"):
-                documents = retrieve_similar_chunks(
-                    db=db,
-                    query=query,
-                    limit=MAX_CHUNK_RESPONSE,
-                )
-        else:
-            documents = retrieve_similar_chunks(
-                db=db,
-                query=query,
-                limit=MAX_CHUNK_RESPONSE,
-            )
+    documents = retrieve_initial_candidates(
+        db=db,
+        query=query,
+        retrieval_mode=retrieval_mode,
+    )
 
-    # Metadata boosts choose better reranker candidates without replacing the
-    # actual semantic/lexical relevance score.
-    if tracker:
-        tracker.log(
-            {
-                "retrieval_candidates": len(documents),
-            }
-        )
-        with tracker.measure("metadata_boost"):
-            boosted_documents = apply_metadata_boost(
-                documents
-            )
-    else:
-        boosted_documents = apply_metadata_boost(
-            documents
-        )
+    boosted_documents = apply_metadata_boost(documents)
 
-    if tracker:
-        with tracker.measure("candidate_sort"):
-            sorted_documents = sorted(
-                boosted_documents,
-                key=lambda document: document.score,
-                reverse=True,
-            )
-    else:
-        sorted_documents = sorted(
-            boosted_documents,
-            key=lambda document: document.score,
-            reverse=True,
-        )
+    sorted_documents = sorted(
+        boosted_documents,
+        key=lambda document: document.score,
+        reverse=True,
+    )
 
-    if tracker:
-        with tracker.measure("candidate_selection"):
-            documents = select_reranker_candidates(
-                sorted_documents,
-                limit=RERANKER_CANDIDATES,
-            )
-        tracker.log(
-            {
-                "reranker_candidates": len(documents),
-            }
-        )
-    else:
-        documents = select_reranker_candidates(
-            sorted_documents,
-            limit=RERANKER_CANDIDATES,
-        )
+    documents = select_reranker_candidates(
+        sorted_documents,
+        limit=RERANKER_CANDIDATES,
+    )
 
     if tracker:
         with tracker.measure("reranker"):
@@ -127,492 +57,54 @@ def retrieve_chunks(
                 documents=documents,
                 limit=MAX_CHUNK_RESPONSE,
             )
-            return assign_source_numbers(reranked_documents)
-
-    reranked_documents = rerank_chunks(
-        query=query,
-        documents=documents,
-        limit=MAX_CHUNK_RESPONSE,
-    )
+    else:
+        reranked_documents = rerank_chunks(
+            query=query,
+            documents=documents,
+            limit=MAX_CHUNK_RESPONSE,
+        )
 
     return assign_source_numbers(reranked_documents)
 
 
-# web
 async def retrieve_web_documents(
     query: str,
     cached_length: int,
     provider: str,
 ):
-
-    if provider == "tavily":
-
-        return await retrieve_tavily_documents(
-            query=query,
-            cached_length=cached_length,
-        )
-    
     if provider == "exa":
-
         return await retrieve_exa_documents(
             query=query,
             cached_length=cached_length,
         )
 
     if provider == "ddgs":
-
         return await retrieve_ddgs_documents(
             query=query,
             cached_length=cached_length,
         )
-    
+
     return await retrieve_searxng_documents(
         query=query,
         cached_length=cached_length,
     )
 
 
-# semantic
-def retrieve_similar_chunks(
+def retrieve_initial_candidates(
     db: Session,
     query: str,
-    limit: int = MAX_CHUNK_RESPONSE
+    retrieval_mode: str,
 ):
-    
-    query_vector = generate_embeddings(
-        [query]
-    )[0]
-
-    distance = EmbeddingModel.vector.cosine_distance(
-        query_vector
-    ).label("distance")
-
-    result = (
-        db.query(
-            DocumentModel,
-            ChunkModel,
-            distance
-        )
-        .join(
-            EmbeddingModel,
-            EmbeddingModel.id_chunk == ChunkModel.id
-        )
-        .join(
-            DocumentModel,
-            DocumentModel.id == ChunkModel.id_document
-        )
-        .order_by(
-            distance
-        )
-        .limit(limit)
-        .all()
-    )
-
-    documents = []
-
-    for document, chunk, distance in result:
-        score = max(0.0, 1.0 - float(distance))
-
-        if score < MIN_SEMANTIC_SCORE:
-            continue
-
-        documents.append(
-            DocumentSchema(
-                chunk_index=chunk.chunk_index,
-                title=document.title,
-                url=document.url,
-                content=chunk.content,
-                score=score,
-                provider=document.provider,
-                source_type=document.source_type,
-                content_type=document.content_type,
-                source_reliability=document.source_reliability,
-                search_engine=document.search_engine,
-                search_category=document.search_category,
-                author=document.author,
-                categories=document.categories,
-                tags=document.tags,
-                published_at=document.published_at,
-                search_score=document.search_score,
-            )
+    if retrieval_mode == "lexical":
+        return retrieve_lexical_chunks(
+            db=db,
+            query=query,
+            limit=MAX_CHUNK_RESPONSE,
         )
 
-    return documents
-
-
-# lexical
-def retrieve_lexical_chunks(
-    db: Session,
-    query: str,
-    limit: int = MAX_CHUNK_RESPONSE
-):
-    search_query = func.websearch_to_tsquery("english", query)
-
-    rank = func.ts_rank(
-        func.to_tsvector("english", ChunkModel.content),
-        search_query
-    ).label("score")
-
-    result = (
-        db.query(
-            DocumentModel,
-            ChunkModel,
-            rank
-        )
-        .join(
-            DocumentModel,
-            DocumentModel.id == ChunkModel.id_document
-        )
-        .filter(
-            func.to_tsvector("english", ChunkModel.content).op("@@")(search_query)
-        )
-        .filter(
-            rank > MIN_LEXICAL_SCORE
-        )
-        .order_by(
-            desc(rank)
-        )
-        .limit(limit)
-        .all()
-    )
-
-    documents = [
-        DocumentSchema(
-            chunk_index=chunk.chunk_index,
-            title=document.title,
-            url=document.url,
-            content=chunk.content,
-            score=float(score),
-            provider=document.provider,
-            source_type=document.source_type,
-            content_type=document.content_type,
-            source_reliability=document.source_reliability,
-            search_engine=document.search_engine,
-            search_category=document.search_category,
-            author=document.author,
-            categories=document.categories,
-            tags=document.tags,
-            published_at=document.published_at,
-            search_score=document.search_score,
-        )
-        for document, chunk, score in result
-    ]
-
-    if documents:
-        return documents
-
-    # PostgreSQL full-text search can be strict for natural-language questions;
-    # fallback to keyword overlap keeps lexical mode useful for sparse matches.
-    return retrieve_keyword_chunks(
+    return retrieve_similar_chunks(
         db=db,
         query=query,
-        limit=limit,
+        limit=MAX_CHUNK_RESPONSE,
     )
 
-
-def retrieve_keyword_chunks(
-    db: Session,
-    query: str,
-    limit: int = MAX_CHUNK_RESPONSE
-):
-    terms = extract_query_terms(query)
-
-    if not terms:
-        return []
-
-    rank = sum(
-        case(
-            (ChunkModel.content.ilike(f"%{term}%"), 1),
-            else_=0,
-        )
-        for term in terms
-    ).label("score")
-
-    result = (
-        db.query(
-            DocumentModel,
-            ChunkModel,
-            rank
-        )
-        .join(
-            DocumentModel,
-            DocumentModel.id == ChunkModel.id_document
-        )
-        .filter(
-            or_(
-                *[
-                    ChunkModel.content.ilike(f"%{term}%")
-                    for term in terms
-                ]
-            )
-        )
-        .order_by(
-            desc(rank)
-        )
-        .limit(limit)
-        .all()
-    )
-
-    max_score = max(
-        [score for _, _, score in result],
-        default=1,
-    )
-
-    return [
-        DocumentSchema(
-            chunk_index=chunk.chunk_index,
-            title=document.title,
-            url=document.url,
-            content=chunk.content,
-            score=float(score) / max_score,
-            provider=document.provider,
-            source_type=document.source_type,
-            content_type=document.content_type,
-            source_reliability=document.source_reliability,
-            search_engine=document.search_engine,
-            search_category=document.search_category,
-            author=document.author,
-            categories=document.categories,
-            tags=document.tags,
-            published_at=document.published_at,
-            search_score=document.search_score,
-        )
-        for document, chunk, score in result
-        if score > 0
-    ]
-
-
-def extract_query_terms(query: str):
-    stopwords = {
-        "are",
-        "can",
-        "for",
-        "how",
-        "the",
-        "what",
-        "when",
-        "where",
-        "which",
-        "who",
-        "why",
-        "with",
-    }
-
-    return [
-        term
-        for term in re.findall(r"\b[a-zA-Z0-9]{3,}\b", query.lower())
-        if term not in stopwords
-    ]
-
-
-def select_reranker_candidates(
-    documents: list[DocumentSchema],
-    limit: int,
-):
-    # First pass favors source diversity; second pass fills remaining slots with
-    # the best leftover chunks regardless of URL.
-    selected_documents = []
-    selected_urls = set()
-
-    for document in documents:
-        if document.url in selected_urls:
-            continue
-
-        selected_documents.append(document)
-        selected_urls.add(document.url)
-
-        if len(selected_documents) >= limit:
-            return selected_documents
-
-    selected_document_ids = {
-        id(document)
-        for document in selected_documents
-    }
-
-    for document in documents:
-        if id(document) in selected_document_ids:
-            continue
-
-        selected_documents.append(document)
-
-        if len(selected_documents) >= limit:
-            break
-
-    return selected_documents
-
-
-def assign_source_numbers(
-    documents: list[DocumentSchema],
-):
-    return [
-        document.model_copy(
-            update={
-                "source_number": index + 1
-            }
-        )
-        for index, document in enumerate(documents)
-    ]
-
-
-def classify_source_type(
-    url: str,
-    category: str | None = None,
-    engine: str | None = None,
-):
-    domain = urlparse(url).netloc.lower()
-    metadata = f"{category or ''} {engine or ''}".lower()
-
-    if any(keyword in metadata for keyword in {"arxiv", "pubmed", "semantic scholar", "science"}):
-        return "academic"
-
-    if "news" in metadata:
-        return "news"
-
-    if any(
-        domain.endswith(academic_domain)
-        for academic_domain in {
-            "arxiv.org",
-            "nature.com",
-            "sciencedirect.com",
-            "ncbi.nlm.nih.gov",
-            "pubmed.ncbi.nlm.nih.gov",
-            "springer.com",
-            "ieee.org",
-            "acm.org",
-        }
-    ):
-        return "academic"
-
-    if any(
-        domain.endswith(documentation_domain)
-        for documentation_domain in {
-            "docs.python.org",
-            "developer.mozilla.org",
-            "docs.microsoft.com",
-            "cloud.google.com",
-            "docs.aws.amazon.com",
-            "openai.com",
-        }
-    ):
-        return "documentation"
-
-    if any(
-        domain.endswith(news_domain)
-        for news_domain in {
-            "bbc.com",
-            "reuters.com",
-            "apnews.com",
-            "nytimes.com",
-            "theguardian.com",
-        }
-    ):
-        return "news"
-
-    if any(
-        domain.endswith(forum_domain)
-        for forum_domain in {
-            "reddit.com",
-            "stackoverflow.com",
-            "stackexchange.com",
-            "quora.com",
-        }
-    ):
-        return "forum"
-
-    return "web"
-
-
-def detect_content_type(
-    url: str,
-    title: str = "",
-    category: str | None = None,
-    engine: str | None = None,
-):
-    domain = urlparse(url).netloc.lower()
-    path = urlparse(url).path.lower()
-    metadata = f"{title} {category or ''} {engine or ''}".lower()
-
-    if path.endswith(".pdf"):
-        return "pdf"
-
-    source_type = classify_source_type(url, category, engine)
-
-    if source_type == "academic":
-        return "paper"
-
-    if source_type == "documentation":
-        return "documentation"
-
-    if source_type == "news":
-        return "news"
-
-    if source_type == "forum":
-        return "forum"
-
-    if "blog" in path or "blog" in metadata:
-        return "blog"
-
-    if "press" in path or "press release" in metadata:
-        return "press_release"
-
-    if domain.startswith("docs."):
-        return "documentation"
-
-    return "article"
-
-
-def calculate_source_reliability(
-    url: str,
-    category: str | None = None,
-    engine: str | None = None,
-):
-    source_type = classify_source_type(url, category, engine)
-
-    if source_type == "academic":
-        return 90
-
-    if source_type == "documentation":
-        return 85
-
-    if source_type == "news":
-        return 70
-
-    if source_type == "forum":
-        return 45
-
-    return 55
-
-
-def extract_publication_date(
-    url: str,
-    title: str = "",
-    content: str = "",
-    published_at: str | None = None,
-):
-    if published_at:
-        return published_at
-
-    text = f"{url} {title} {content[:1000]}"
-
-    date_match = re.search(
-        r"\b(20\d{2}|19\d{2})[-/](0?[1-9]|1[0-2])[-/](0?[1-9]|[12]\d|3[01])\b",
-        text,
-    )
-
-    if date_match:
-        year, month, day = date_match.groups()
-        return date(
-            int(year),
-            int(month),
-            int(day),
-        ).isoformat()
-
-    year_match = re.search(
-        r"\b(20\d{2}|19\d{2})\b",
-        text,
-    )
-
-    if year_match:
-        return year_match.group(1)
-
-    return None

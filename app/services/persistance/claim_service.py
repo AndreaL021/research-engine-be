@@ -2,31 +2,13 @@ import re
 
 from sqlalchemy.orm import Session
 
+from app.config.knowledge_config import (
+    CLAIM_SIGNAL_WORDS,
+    MAX_CLAIMS_PER_CHUNK,
+    MAX_CLAIM_WORDS,
+    MIN_CLAIM_WORDS,
+)
 from app.models.claim_model import ClaimModel
-
-
-MAX_CLAIMS_PER_CHUNK = 3
-MIN_CLAIM_WORDS = 8
-MAX_CLAIM_WORDS = 45
-
-CLAIM_SIGNAL_WORDS = {
-    "affect",
-    "allow",
-    "because",
-    "can",
-    "cause",
-    "depend",
-    "enable",
-    "improve",
-    "increase",
-    "indicate",
-    "lead",
-    "may",
-    "reduce",
-    "require",
-    "show",
-    "suggest",
-}
 
 
 def create_claims(

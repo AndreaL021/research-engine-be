@@ -33,3 +33,21 @@ def create_query(
     db.flush()
 
     return query_model
+
+
+def get_or_create_query(
+    db: Session,
+    query: str,
+):
+    existing_query = get_query_by_text(
+        db=db,
+        query=query,
+    )
+
+    if existing_query:
+        return existing_query
+
+    return create_query(
+        db=db,
+        query=query,
+    )

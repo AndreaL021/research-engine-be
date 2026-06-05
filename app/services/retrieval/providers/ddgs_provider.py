@@ -4,12 +4,13 @@ from app.schemas.research_schema import RetrievedDocumentSchema
 from urllib.parse import urlparse
 from ddgs.exceptions import DDGSException
 
-from app.config.config import (
+from app.config.retrieval_config import (
+    DDGS_BACKEND,
     MIN_CONTENT_WORDS, 
     TRUSTED_DOMAINS,
 )
 
-from app.services.retrieval.retrieval_utils import (
+from app.services.retrieval.local.retrieval_utils import (
     clean_content,
     extract_trafilatura_metadata,
     get_results_to_fetch,
@@ -34,7 +35,7 @@ async def retrieve_web_documents(
             results = ddgs.text(
                 query,
                 max_results=results_to_fetch,
-                backend="duckduckgo"
+                backend=DDGS_BACKEND
             )
         except DDGSException:
             return documents

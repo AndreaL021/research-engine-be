@@ -4,34 +4,20 @@ from datetime import datetime
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-from app.config.config import MIN_RERANKER_SCORE, RERANKER_MODEL
-from app.schemas.research_schema import DocumentSchema
-
-
-SOURCE_TYPE_BOOSTS = {
-    "academic": 0.08,
-    "documentation": 0.07,
-    "news": 0.03,
-    "web": 0.0,
-    "forum": -0.04,
-}
-
-CONTENT_TYPE_BOOSTS = {
-    "paper": 0.08,
-    "documentation": 0.07,
-    "pdf": 0.04,
-    "article": 0.02,
-    "news": 0.02,
-    "blog": -0.02,
-    "forum": -0.04,
-    "press_release": -0.02,
-}
-
-MAX_FRESHNESS_BOOST = 0.04
+from app.config.model_config import RERANKER_MODEL
+from app.config.retrieval_config import (
+    CONTENT_TYPE_BOOSTS,
+    MAX_FRESHNESS_BOOST,
+    MIN_RERANKER_SCORE,
+    RERANKER_BATCH_SIZE,
+    RERANKER_MAX_LENGTH,
+    SOURCE_TYPE_BOOSTS,
+)
+from app.schemas.research_schema import RetrievedChunkSchema
 
 
 def apply_metadata_boost(
-    documents: list[DocumentSchema],
+    documents: list[RetrievedChunkSchema],
 ):
     return [
         document.model_copy(
@@ -43,7 +29,7 @@ def apply_metadata_boost(
     ]
 
 
-def calculate_metadata_aware_score(document: DocumentSchema):
+def calculate_metadata_aware_score(document: RetrievedChunkSchema):
     # Keep metadata as a light boost: relevance should still dominate, but
     # stronger sources should win ties between similarly relevant chunks.
     reliability_boost = (document.source_reliability - 50) / 1000
@@ -109,9 +95,9 @@ def preload_reranker():
 
 def rerank_chunks(
     query: str,
-    documents: list[DocumentSchema],
+    documents: list[RetrievedChunkSchema],
     limit: int,
-    batch_size: int = 8,
+    batch_size: int = RERANKER_BATCH_SIZE,
 ):
 
     try:
@@ -131,7 +117,7 @@ def rerank_chunks(
                     padding=True,
                     truncation=True,
                     return_tensors="pt",
-                    max_length=512,
+                    max_length=RERANKER_MAX_LENGTH,
                 )
                 logits = model(**inputs, return_dict=True).logits.view(-1).float()
                 raw_scores.extend(

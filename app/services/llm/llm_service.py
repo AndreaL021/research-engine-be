@@ -5,13 +5,20 @@ import httpx
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 
-from app.config.config import (
-    LLM_MODEL,
+from app.config.llm_config import (
+    LLM_INPUT_MAX_LENGTH,
     LLM_MAX_NEW_TOKEN,
-    LLM_PROVIDER,
+    LLM_TEMPERATURE,
+    LLM_TIMEOUT_SECONDS,
     MIN_ANSWER_DOCUMENTS,
     MIN_AVERAGE_ANSWER_SCORE,
     MIN_AVERAGE_SOURCE_RELIABILITY,
+    OLLAMA_KEEP_ALIVE,
+    OLLAMA_PRELOAD_TOKENS,
+)
+from app.config.model_config import (
+    LLM_MODEL,
+    LLM_PROVIDER,
     OLLAMA_MODEL,
     OLLAMA_URL,
 )
@@ -130,7 +137,7 @@ def generate_huggingface_answer(prompt: str):
         prompt,
         return_tensors="pt",
         truncation=True,
-        max_length=2048,
+        max_length=LLM_INPUT_MAX_LENGTH,
     )
 
     with torch.no_grad():
@@ -160,10 +167,10 @@ def generate_ollama_answer(prompt: str):
             "stream": False,
             "options": {
                 "num_predict": LLM_MAX_NEW_TOKEN,
-                "temperature": 0,
+                "temperature": LLM_TEMPERATURE,
             },
         },
-        timeout=180,
+        timeout=LLM_TIMEOUT_SECONDS,
     )
     response.raise_for_status()
 
@@ -248,13 +255,13 @@ def preload_ollama_llm():
             "model": get_ollama_model(),
             "prompt": "",
             "stream": False,
-            "keep_alive": "30m",
+            "keep_alive": OLLAMA_KEEP_ALIVE,
             "options": {
-                "num_predict": 1,
-                "temperature": 0,
+                "num_predict": OLLAMA_PRELOAD_TOKENS,
+                "temperature": LLM_TEMPERATURE,
             },
         },
-        timeout=180,
+        timeout=LLM_TIMEOUT_SECONDS,
     )
     response.raise_for_status()
 
