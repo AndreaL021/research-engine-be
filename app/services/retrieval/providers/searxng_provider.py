@@ -31,20 +31,10 @@ async def retrieve_web_documents(
     )
 
     try:
-        async with httpx.AsyncClient(timeout=SEARXNG_TIMEOUT_SECONDS) as client:
-            response = await client.get(
-                f"{SEARXNG_URL.rstrip('/')}/search",
-                params={
-                    "q": query,
-                    "format": "json",
-                    "categories": SEARXNG_CATEGORY,
-                },
-            )
-            response.raise_for_status()
+        data = await fetch_searxng_results(query)
     except httpx.HTTPError:
         return documents
 
-    data = response.json()
     seen_urls = set()
     # Rank cheap SearXNG candidates first, then spend Trafilatura downloads only
     # on the most promising URLs.
@@ -114,6 +104,49 @@ async def retrieve_web_documents(
     )
 
     return documents
+
+
+async def fetch_searxng_results(query: str):
+    async with httpx.AsyncClient(timeout=SEARXNG_TIMEOUT_SECONDS) as client:
+        data = await request_searxng(
+            client=client,
+            query=query,
+            include_category=True,
+        )
+
+        if data.get("results"):
+            return data
+
+        # Some local SearXNG engine combinations occasionally return an empty
+        # result set for a category-filtered request. Retry without the category
+        # before treating the provider as empty.
+        return await request_searxng(
+            client=client,
+            query=query,
+            include_category=False,
+        )
+
+
+async def request_searxng(
+    client: httpx.AsyncClient,
+    query: str,
+    include_category: bool,
+):
+    params = {
+        "q": query,
+        "format": "json",
+    }
+
+    if include_category:
+        params["categories"] = SEARXNG_CATEGORY
+
+    response = await client.get(
+        f"{SEARXNG_URL.rstrip('/')}/search",
+        params=params,
+    )
+    response.raise_for_status()
+
+    return response.json()
 
 
 def rank_search_results(results: list[dict]):
