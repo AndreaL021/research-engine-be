@@ -212,6 +212,8 @@ def build_document_schema(
     score: float,
 ):
     return RetrievedChunkSchema(
+        id_document=document.id,
+        id_chunk=chunk.id,
         chunk_index=chunk.chunk_index,
         title=document.title,
         url=document.url,

@@ -4,6 +4,7 @@ from app.database.database import SessionLocal
 from app.models.chunk_model import ChunkModel
 from app.models.claim_model import ClaimModel
 from app.services.ingestion.claim_extraction_service import extract_claims
+from app.services.persistance.claim_relation_service import reconcile_claims_for_claim_ids
 from app.services.utils.tracking_service import PipelineTracker
 
 
@@ -60,12 +61,21 @@ def create_claims_for_chunk_ids(
         )
 
         with tracker.measure("claim_extraction"):
-            create_claims(
+            claim_models = create_claims(
                 db=db,
                 chunks=chunks,
             )
 
         db.commit()
+
+        reconcile_claims_for_claim_ids(
+            claim_ids=[
+                claim_model.id
+                for claim_model in claim_models
+            ],
+            provider=provider,
+            retrieval_mode=retrieval_mode,
+        )
     except Exception as error:
         db.rollback()
         tracker.log(

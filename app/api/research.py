@@ -31,4 +31,5 @@ async def research(
         "documents": result["documents"],
         "answer": result["answer"],
         "follow_up_questions": result["follow_up_questions"],
+        "evidence_relations": result["evidence_relations"],
     }

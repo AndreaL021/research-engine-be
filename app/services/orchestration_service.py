@@ -31,6 +31,9 @@ from app.services.persistance.entity_service import (
 from app.services.persistance.claim_service import (
     create_claims_for_chunk_ids,
 )
+from app.services.persistance.claim_relation_service import (
+    get_evidence_relations_for_chunks,
+)
 # services retrieval
 from app.services.retrieval.retrieval_service import (
     retrieve_web_documents,
@@ -80,6 +83,7 @@ async def retrieve_documents(
                 query=query,
                 documents=response,
                 tracker=tracker,
+                db=db,
                 provider=provider,
                 retrieval_mode=retrieval_mode,
                 background_tasks=background_tasks,
@@ -140,6 +144,7 @@ async def retrieve_documents(
                 query=query,
                 documents=response,
                 tracker=tracker,
+                db=db,
                 provider=provider,
                 retrieval_mode=retrieval_mode,
                 background_tasks=background_tasks,
@@ -208,6 +213,7 @@ async def retrieve_documents(
         query=query,
         documents=response,
         tracker=tracker,
+        db=db,
         provider=provider,
         retrieval_mode=retrieval_mode,
         background_tasks=background_tasks,
@@ -272,6 +278,7 @@ def create_research_result(
     query: str,
     documents: list,
     tracker: PipelineTracker,
+    db: Session,
     provider: str,
     retrieval_mode: str,
     background_tasks: BackgroundTasks | None,
@@ -286,6 +293,15 @@ def create_research_result(
     follow_up_questions = generate_follow_up_questions(
         query=query,
         documents=documents,
+    )
+
+    evidence_relations = get_evidence_relations_for_chunks(
+        db=db,
+        chunk_ids=[
+            document.id_chunk
+            for document in documents
+            if document.id_chunk is not None
+        ],
     )
 
     schedule_follow_up_research(
@@ -316,6 +332,7 @@ def create_research_result(
         "documents": documents,
         "answer": answer,
         "follow_up_questions": follow_up_questions,
+        "evidence_relations": evidence_relations,
     }
 
 

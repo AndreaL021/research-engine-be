@@ -2,6 +2,8 @@ from pydantic import BaseModel, Field
 
 # retrieved chunk
 class RetrievedChunkSchema(BaseModel):
+    id_document: int | None = None
+    id_chunk: int | None = None
     source_number: int | None = None
     chunk_index: int | None = None
     title: str
@@ -20,6 +22,14 @@ class RetrievedChunkSchema(BaseModel):
     published_at: str | None = None
     search_score: int | None = None
 
+class EvidenceRelationSchema(BaseModel):
+    relation_type: str
+    confidence: int
+    explanation: str | None = None
+    claim_a: str
+    claim_b: str
+
+
 # response
 class ResearchResponseSchema(BaseModel):
     query: str
@@ -28,6 +38,7 @@ class ResearchResponseSchema(BaseModel):
     retrieval_mode: str
     answer: str | None = None
     follow_up_questions: list[str] = Field(default_factory=list)
+    evidence_relations: list[EvidenceRelationSchema] = Field(default_factory=list)
     
 # request
 class ResearchRequestSchema(BaseModel):
