@@ -37,6 +37,8 @@ from app.services.retrieval.retrieval_service import (
     retrieve_chunks,
 )
 from app.services.llm.llm_service import generate_answer
+from app.services.llm.follow_up_service import generate_follow_up_questions
+from app.services.autonomous_research_service import save_follow_up_research
 # other
 from app.config.retrieval_config import MAX_CACHED_DOCUMENTS
 from fastapi import BackgroundTasks, HTTPException
@@ -78,6 +80,10 @@ async def retrieve_documents(
                 query=query,
                 documents=response,
                 tracker=tracker,
+                provider=provider,
+                retrieval_mode=retrieval_mode,
+                background_tasks=background_tasks,
+                new_chunk_ids=[],
             )
 
         query_model = get_or_create_query(
@@ -134,6 +140,10 @@ async def retrieve_documents(
                 query=query,
                 documents=response,
                 tracker=tracker,
+                provider=provider,
+                retrieval_mode=retrieval_mode,
+                background_tasks=background_tasks,
+                new_chunk_ids=[],
             )
            
         create_chunks(
@@ -164,26 +174,6 @@ async def retrieve_documents(
         
         # commit transaction
         db.commit()
-
-        schedule_claim_extraction(
-            background_tasks=background_tasks,
-            chunk_ids=[
-                chunk_model.id
-                for chunk_model in chunk_models
-            ],
-            provider=provider,
-            retrieval_mode=retrieval_mode,
-        )
-
-        schedule_entity_extraction(
-            background_tasks=background_tasks,
-            chunk_ids=[
-                chunk_model.id
-                for chunk_model in chunk_models
-            ],
-            provider=provider,
-            retrieval_mode=retrieval_mode,
-        )
 
         # perform semantic retrieval on the updated KB
         response = retrieve_chunks(
@@ -218,6 +208,13 @@ async def retrieve_documents(
         query=query,
         documents=response,
         tracker=tracker,
+        provider=provider,
+        retrieval_mode=retrieval_mode,
+        background_tasks=background_tasks,
+        new_chunk_ids=[
+            chunk_model.id
+            for chunk_model in chunk_models
+        ],
     )
 
 
@@ -275,6 +272,10 @@ def create_research_result(
     query: str,
     documents: list,
     tracker: PipelineTracker,
+    provider: str,
+    retrieval_mode: str,
+    background_tasks: BackgroundTasks | None,
+    new_chunk_ids: list[int],
 ):
     with tracker.measure("answer_generation"):
         answer = generate_answer(
@@ -282,9 +283,56 @@ def create_research_result(
             documents=documents,
         )
 
+    follow_up_questions = generate_follow_up_questions(
+        query=query,
+        documents=documents,
+    )
+
+    schedule_follow_up_research(
+        background_tasks=background_tasks,
+        query=query,
+        follow_up_questions=follow_up_questions,
+        provider=provider,
+        retrieval_mode=retrieval_mode,
+    )
+
+    schedule_claim_extraction(
+        background_tasks=background_tasks,
+        chunk_ids=new_chunk_ids,
+        provider=provider,
+        retrieval_mode=retrieval_mode,
+    )
+
+    schedule_entity_extraction(
+        background_tasks=background_tasks,
+        chunk_ids=new_chunk_ids,
+        provider=provider,
+        retrieval_mode=retrieval_mode,
+    )
+
     tracker.finish()
 
     return {
         "documents": documents,
         "answer": answer,
+        "follow_up_questions": follow_up_questions,
     }
+
+
+def schedule_follow_up_research(
+    background_tasks: BackgroundTasks | None,
+    query: str,
+    follow_up_questions: list[str],
+    provider: str,
+    retrieval_mode: str,
+):
+    if not background_tasks or not follow_up_questions:
+        return
+
+    background_tasks.add_task(
+        save_follow_up_research,
+        query,
+        follow_up_questions,
+        provider,
+        retrieval_mode,
+    )

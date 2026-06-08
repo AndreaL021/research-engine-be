@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # retrieved chunk
 class RetrievedChunkSchema(BaseModel):
@@ -27,6 +27,7 @@ class ResearchResponseSchema(BaseModel):
     provider: str
     retrieval_mode: str
     answer: str | None = None
+    follow_up_questions: list[str] = Field(default_factory=list)
     
 # request
 class ResearchRequestSchema(BaseModel):

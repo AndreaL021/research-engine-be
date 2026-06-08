@@ -30,4 +30,5 @@ async def research(
         "retrieval_mode": payload.retrieval_mode,
         "documents": result["documents"],
         "answer": result["answer"],
+        "follow_up_questions": result["follow_up_questions"],
     }

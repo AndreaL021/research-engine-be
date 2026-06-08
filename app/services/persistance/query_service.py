@@ -19,11 +19,15 @@ def get_query_by_text(
 def create_query(
     db: Session,
     query: str,
+    query_type: str = "user",
+    parent_query_id: int | None = None,
 ):
 
     # create new query model
     query_model = QueryModel(
-        query=query
+        query=query,
+        query_type=query_type,
+        parent_query_id=parent_query_id,
     )
 
     # persist query into database
@@ -38,6 +42,8 @@ def create_query(
 def get_or_create_query(
     db: Session,
     query: str,
+    query_type: str = "user",
+    parent_query_id: int | None = None,
 ):
     existing_query = get_query_by_text(
         db=db,
@@ -50,4 +56,6 @@ def get_or_create_query(
     return create_query(
         db=db,
         query=query,
+        query_type=query_type,
+        parent_query_id=parent_query_id,
     )
