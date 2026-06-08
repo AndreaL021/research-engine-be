@@ -16,6 +16,7 @@ from app.services.persistance.embedding_service import (
 from app.services.persistance.query_document_service import ensure_query_document_relation
 from app.services.persistance.query_service import get_or_create_query
 from app.services.retrieval.retrieval_service import retrieve_web_documents
+from app.services.knowledge_enrichment_service import enrich_chunks
 from app.services.utils.tracking_service import PipelineTracker
 
 
@@ -40,6 +41,7 @@ async def save_follow_up_research(
                     parent_query=parent_query,
                     follow_up_question=follow_up_question,
                     provider=provider,
+                    retrieval_mode=retrieval_mode,
                 )
     except Exception as error:
         tracker.log(
@@ -56,6 +58,7 @@ async def save_follow_up_question_documents(
     parent_query: str,
     follow_up_question: str,
     provider: str,
+    retrieval_mode: str,
 ):
     db: Session = SessionLocal()
     chunk_models = []
@@ -144,6 +147,15 @@ async def save_follow_up_question_documents(
         )
 
         db.commit()
+
+        enrich_chunks(
+            chunk_ids=[
+                chunk_model.id
+                for chunk_model in chunk_models
+            ],
+            provider=provider,
+            retrieval_mode=retrieval_mode,
+        )
     except Exception:
         db.rollback()
         raise

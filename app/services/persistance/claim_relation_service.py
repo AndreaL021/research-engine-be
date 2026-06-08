@@ -8,7 +8,6 @@ from app.database.database import SessionLocal
 from app.models.claim_model import ClaimModel
 from app.models.claim_relation_model import ClaimRelationModel
 from app.services.ingestion.claim_reconciliation_service import reconcile_claims
-from app.services.utils.tracking_service import PipelineTracker
 
 
 def reconcile_claims_for_claim_ids(
@@ -20,40 +19,28 @@ def reconcile_claims_for_claim_ids(
         return
 
     db: Session = SessionLocal()
-    tracker = PipelineTracker(
-        provider=f"{provider}-reconciliation",
-        retrieval_mode=retrieval_mode,
-    )
 
     try:
-        with tracker.measure("claim_reconciliation"):
-            new_claims = get_claims_by_ids(
-                db=db,
-                claim_ids=claim_ids,
-            )
+        new_claims = get_claims_by_ids(
+            db=db,
+            claim_ids=claim_ids,
+        )
 
-            existing_claims = get_existing_comparison_claims(
-                db=db,
-                excluded_claim_ids=claim_ids,
-            )
+        existing_claims = get_existing_comparison_claims(
+            db=db,
+            excluded_claim_ids=claim_ids,
+        )
 
-            create_claim_relations(
-                db=db,
-                new_claims=new_claims,
-                existing_claims=existing_claims,
-            )
+        create_claim_relations(
+            db=db,
+            new_claims=new_claims,
+            existing_claims=existing_claims,
+        )
 
         db.commit()
-    except Exception as error:
+    except Exception:
         db.rollback()
-        tracker.log(
-            {
-                "failed": 1,
-                "error_type": type(error).__name__,
-            }
-        )
     finally:
-        tracker.finish()
         db.close()
 
 

@@ -25,12 +25,6 @@ from app.services.persistance.embedding_service import (
     generate_embeddings, 
     create_embeddings
 )
-from app.services.persistance.entity_service import (
-    create_entities_for_chunk_ids,
-)
-from app.services.persistance.claim_service import (
-    create_claims_for_chunk_ids,
-)
 from app.services.persistance.claim_relation_service import (
     get_evidence_relations_for_chunks,
 )
@@ -42,6 +36,7 @@ from app.services.retrieval.retrieval_service import (
 from app.services.llm.llm_service import generate_answer
 from app.services.llm.follow_up_service import generate_follow_up_questions
 from app.services.autonomous_research_service import save_follow_up_research
+from app.services.knowledge_enrichment_service import enrich_chunks
 # other
 from app.config.retrieval_config import MAX_CACHED_DOCUMENTS
 from fastapi import BackgroundTasks, HTTPException
@@ -188,6 +183,20 @@ async def retrieve_documents(
             tracker=tracker,
         )
 
+        return create_research_result(
+            query=query,
+            documents=response,
+            tracker=tracker,
+            db=db,
+            provider=provider,
+            retrieval_mode=retrieval_mode,
+            background_tasks=background_tasks,
+            new_chunk_ids=[
+                chunk_model.id
+                for chunk_model in chunk_models
+            ],
+        )
+
     except Exception as error:
 
         # rollback failed transaction
@@ -208,23 +217,9 @@ async def retrieve_documents(
 
         # always close database session
         db.close()
-        
-    return create_research_result(
-        query=query,
-        documents=response,
-        tracker=tracker,
-        db=db,
-        provider=provider,
-        retrieval_mode=retrieval_mode,
-        background_tasks=background_tasks,
-        new_chunk_ids=[
-            chunk_model.id
-            for chunk_model in chunk_models
-        ],
-    )
 
 
-def schedule_claim_extraction(
+def schedule_knowledge_enrichment(
     background_tasks: BackgroundTasks | None,
     chunk_ids: list[int],
     provider: str,
@@ -235,39 +230,14 @@ def schedule_claim_extraction(
 
     if background_tasks:
         background_tasks.add_task(
-            create_claims_for_chunk_ids,
+            enrich_chunks,
             chunk_ids,
             provider,
             retrieval_mode,
         )
         return
 
-    create_claims_for_chunk_ids(
-        chunk_ids=chunk_ids,
-        provider=provider,
-        retrieval_mode=retrieval_mode,
-    )
-
-
-def schedule_entity_extraction(
-    background_tasks: BackgroundTasks | None,
-    chunk_ids: list[int],
-    provider: str,
-    retrieval_mode: str,
-):
-    if not chunk_ids:
-        return
-
-    if background_tasks:
-        background_tasks.add_task(
-            create_entities_for_chunk_ids,
-            chunk_ids,
-            provider,
-            retrieval_mode,
-        )
-        return
-
-    create_entities_for_chunk_ids(
+    enrich_chunks(
         chunk_ids=chunk_ids,
         provider=provider,
         retrieval_mode=retrieval_mode,
@@ -312,14 +282,7 @@ def create_research_result(
         retrieval_mode=retrieval_mode,
     )
 
-    schedule_claim_extraction(
-        background_tasks=background_tasks,
-        chunk_ids=new_chunk_ids,
-        provider=provider,
-        retrieval_mode=retrieval_mode,
-    )
-
-    schedule_entity_extraction(
+    schedule_knowledge_enrichment(
         background_tasks=background_tasks,
         chunk_ids=new_chunk_ids,
         provider=provider,

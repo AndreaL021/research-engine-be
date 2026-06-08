@@ -29,7 +29,7 @@ def extract_entities(content: str):
     response.raise_for_status()
 
     output = response.json().get("response", "")
-    return parse_entities_json(output)
+    return parse_entities_output(output)
 
 
 def build_entity_extraction_prompt(content: str):
@@ -51,9 +51,12 @@ JSON:
 """
 
 
-def parse_entities_json(output: str):
-    json_text = extract_json_array(output)
-    data = json.loads(json_text)
+def parse_entities_output(output: str):
+    try:
+        json_text = extract_json_array(output)
+        data = json.loads(json_text)
+    except (json.JSONDecodeError, ValueError):
+        return parse_entities_from_text(output)
 
     if not isinstance(data, list):
         return []
@@ -74,6 +77,30 @@ def parse_entities_json(output: str):
 
         seen_entities.add(normalized_entity)
         entities.append(entity_name)
+
+    return entities
+
+
+def parse_entities_from_text(output: str):
+    entities = []
+    seen_entities = set()
+
+    for line in output.splitlines():
+        entity_name = clean_entity(line)
+
+        if not is_valid_entity(entity_name):
+            continue
+
+        normalized_entity = entity_name.lower()
+
+        if normalized_entity in seen_entities:
+            continue
+
+        seen_entities.add(normalized_entity)
+        entities.append(entity_name)
+
+        if len(entities) >= MAX_ENTITIES_PER_CHUNK:
+            break
 
     return entities
 
